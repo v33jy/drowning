@@ -1,0 +1,30 @@
+name: control_app
+description: Disaster drone control & rescue monitoring app
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_map: ^7.0.2          # OSM map (offline-capable)
+  latlong2: ^0.9.1             # LatLng type for flutter_map
+  web_socket_channel: ^3.0.1   # WebSocket to FastAPI server
+  provider: ^6.1.2             # State management
+  record: ^7.1.1               # Microphone capture → PCM stream
+  flutter_sound: ^9.30.0       # PCM playback from stream (VoIP)
+  permission_handler: ^11.3.1  # Microphone permission
+  http: ^1.2.1                 # Initial HTTP calls (grid definition)
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+dependency_overrides:
+  record_linux: ^2.1.1
