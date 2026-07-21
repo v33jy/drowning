@@ -17,6 +17,7 @@ dependencies:
   flutter_sound: ^9.30.0       # PCM playback from stream (VoIP)
   permission_handler: ^11.3.1  # Microphone permission
   http: ^1.2.1                 # Initial HTTP calls (grid definition)
+  shared_preferences: ^2.3.3   # Persist editable server host/port (Settings)
 
 dev_dependencies:
   flutter_test:

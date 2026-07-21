@@ -6,7 +6,7 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
 import '../../models/detection_event.dart';
 import 'call_sheet.dart';
-import 'providers/detection_queue_provider.dart';
+import 'providers/detection_log_provider.dart';
 
 /// Result returned when the sheet closes, so [ControlScreen] knows whether
 /// to immediately open the next queued detection.
@@ -49,7 +49,12 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
   }
 
   void _resolve(DetectionOutcome outcome) {
-    ref.read(detectionQueueProvider.notifier).removeFirst();
+    final status = switch (outcome) {
+      DetectionOutcome.rescued => DetectionStatus.rescued,
+      DetectionOutcome.falseAlarm => DetectionStatus.falseAlarm,
+      DetectionOutcome.minimized => DetectionStatus.pending,
+    };
+    ref.read(detectionLogProvider.notifier).resolve(widget.event.voipSessionId, status);
     Navigator.of(context).pop(outcome);
   }
 

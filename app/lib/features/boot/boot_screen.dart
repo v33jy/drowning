@@ -1,17 +1,13 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 
-import '../../config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
-import '../../models/grid_cell.dart';
 import '../../navigation/root_shell.dart';
 import '../control/providers/grid_provider.dart';
 import '../control/providers/ws_providers.dart';
+import '../settings/providers/settings_provider.dart';
 
 enum _BootPhase { splash, connecting, failed, success }
 
@@ -69,17 +65,16 @@ class _BootScreenState extends ConsumerState<BootScreen> {
 
   Future<void> _connectToServer() async {
     try {
-      final res = await http.get(Uri.parse('${Config.baseUrl}/heatmap/grid'));
-      if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
-      final grid = jsonDecode(res.body) as List<dynamic>;
+      // 이전에 설정 화면에서 저장한 서버 주소가 있으면 그걸 먼저 반영한다 —
+      // SharedPreferences 로드가 끝나기 전에 컴파일 타임 기본값으로 붙어버리는
+      // 경합을 막는다.
+      await ref.read(settingsProvider.notifier).ensureLoaded();
       if (!mounted) return;
+      final settings = ref.read(settingsProvider);
 
-      ref.read(gridDefProvider.notifier).state = {
-        for (final item in grid)
-          (item['cell_id'] as String):
-              CellBounds.fromJson(item['bounds'] as Map<String, dynamic>),
-      };
-      await ref.read(wsClientProvider).connect();
+      await fetchAndApplyGrid(ref, settings.baseUrl);
+      if (!mounted) return;
+      await ref.read(wsClientProvider).connect(settings.wsUrl);
 
       if (!mounted) return;
       setState(() => _phase = _BootPhase.success);

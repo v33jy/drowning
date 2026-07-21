@@ -3,7 +3,6 @@ import 'dart:convert';
 
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-import '../../../config.dart';
 import '../../../core/widgets/connection_badge.dart';
 
 /// One decoded WS envelope: `{"type": ..., "data": ...}`.
@@ -17,10 +16,15 @@ class WsMessage {
 /// about app state — it only exposes connection status and decoded messages
 /// as broadcast streams, so each feature provider (drones/heatmap/detection)
 /// subscribes and reacts only to the message types it cares about.
+///
+/// Takes the URL per [connect] call (rather than reading a static config)
+/// so 설정 화면 can change the server address at runtime and force a
+/// reconnect without recreating this client.
 class WsClient {
   WebSocketChannel? _channel;
   Timer? _reconnectTimer;
   bool _disposed = false;
+  String? _url;
 
   final _statusController = StreamController<ConnectionStatus>.broadcast();
   final _messageController = StreamController<WsMessage>.broadcast();
@@ -28,11 +32,15 @@ class WsClient {
   Stream<ConnectionStatus> get statusStream => _statusController.stream;
   Stream<WsMessage> get messageStream => _messageController.stream;
 
-  Future<void> connect() async {
+  Future<void> connect(String url) async {
     if (_disposed) return;
+    _url = url;
+    _reconnectTimer?.cancel();
+    await _channel?.sink.close();
+
     _statusController.add(ConnectionStatus.connecting);
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(Config.wsUrl));
+      _channel = WebSocketChannel.connect(Uri.parse(url));
       // Await the handshake before declaring "connected" — otherwise a
       // dead server still briefly reports connected.
       await _channel!.ready;
@@ -61,10 +69,10 @@ class WsClient {
   }
 
   void _scheduleReconnect() {
-    if (_disposed) return;
+    if (_disposed || _url == null) return;
     _statusController.add(ConnectionStatus.disconnected);
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 3), connect);
+    _reconnectTimer = Timer(const Duration(seconds: 3), () => connect(_url!));
   }
 
   void dispose() {

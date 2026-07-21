@@ -11,8 +11,9 @@ import '../../core/widgets/status_chip.dart';
 import '../../core/widgets/severity.dart';
 import '../../models/detection_event.dart';
 import '../detection/detection_sheet.dart';
-import '../detection/providers/detection_queue_provider.dart';
+import '../detection/providers/detection_log_provider.dart';
 import 'providers/drones_provider.dart';
+import 'providers/map_focus_provider.dart';
 import 'providers/ws_providers.dart';
 import 'widgets/drone_list_sheet.dart';
 import 'widgets/heatmap_painter.dart';
@@ -49,7 +50,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     if (!mounted) return;
     setState(() => _detectionSheetOpen = false);
     if (outcome != DetectionOutcome.minimized) {
-      final queue = ref.read(detectionQueueProvider);
+      final queue = ref.read(pendingDetectionQueueProvider);
       if (queue.isNotEmpty) _openDetectionSheet(queue.first);
     }
   }
@@ -67,10 +68,18 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     // 큐가 "비어있음 → 있음"으로 바뀔 때만 자동으로 연다. 이미 최소화된 채로
     // 대기 중인 상태에서 새 탐지가 추가되는 건(길이만 증가) 자동으로 다시 열지
     // 않는다 — 큐 칩 숫자만 올라간다.
-    ref.listen<List<DetectionEvent>>(detectionQueueProvider, (previous, next) {
+    ref.listen<List<DetectionEvent>>(pendingDetectionQueueProvider, (previous, next) {
       final wasEmpty = previous == null || previous.isEmpty;
       if (wasEmpty && next.isNotEmpty && !_detectionSheetOpen) {
         _openDetectionSheet(next.first);
+      }
+    });
+
+    // 기록 화면의 "지도에서 보기"가 세팅하면 그 좌표로 팬 이동 후 요청을 비운다.
+    ref.listen(mapFocusRequestProvider, (previous, next) {
+      if (next != null) {
+        _mapController.move(next, 16);
+        Future.microtask(() => ref.read(mapFocusRequestProvider.notifier).state = null);
       }
     });
 
@@ -119,13 +128,13 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                 Consumer(
                   builder: (context, ref, _) {
                     final queueCount =
-                        ref.watch(detectionQueueProvider.select((q) => q.length));
+                        ref.watch(pendingDetectionQueueProvider.select((q) => q.length));
                     return QueueChip(
                       count: queueCount,
                       onTap: _detectionSheetOpen
                           ? null
                           : () {
-                              final queue = ref.read(detectionQueueProvider);
+                              final queue = ref.read(pendingDetectionQueueProvider);
                               if (queue.isNotEmpty) _openDetectionSheet(queue.first);
                             },
                     );
