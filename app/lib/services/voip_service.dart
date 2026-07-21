@@ -27,13 +27,29 @@ class VoipService {
   String? _sessionId;
   int _seq = 0;
   bool _active = false;
+  bool _muted = false;
 
   bool get isActive => _active;
+  bool get isMuted => _muted;
+
+  /// Pauses/resumes the mic → server uplink without tearing down the
+  /// recorder or losing the relay registration. A UI mute toggle that
+  /// didn't actually stop outgoing audio would be misleading in a rescue
+  /// call, so this has to be real, not just a visual state.
+  void setMuted(bool muted) {
+    _muted = muted;
+    if (muted) {
+      _recordSub?.pause();
+    } else {
+      _recordSub?.resume();
+    }
+  }
 
   Future<void> startCall(String sessionId) async {
     if (_active) return;
     _sessionId = sessionId;
     _seq = 0;
+    _muted = false;
 
     // Resolve hostname → IP (InternetAddress() rejects "localhost" on iOS).
     final resolved = await InternetAddress.lookup(Config.serverHost);

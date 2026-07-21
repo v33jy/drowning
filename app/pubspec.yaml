@@ -12,7 +12,7 @@ dependencies:
   flutter_map: ^7.0.2          # OSM map (offline-capable)
   latlong2: ^0.9.1             # LatLng type for flutter_map
   web_socket_channel: ^3.0.1   # WebSocket to FastAPI server
-  provider: ^6.1.2             # State management
+  flutter_riverpod: ^2.6.1     # State management
   record: ^7.1.1               # Microphone capture → PCM stream
   flutter_sound: ^9.30.0       # PCM playback from stream (VoIP)
   permission_handler: ^11.3.1  # Microphone permission
