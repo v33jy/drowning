@@ -15,6 +15,7 @@ final combinedLogProvider = Provider<List<LogEntry>>((ref) {
     for (final d in detections)
       LogEntry(
         type: LogEntryType.detection,
+        droneId: d.event.droneId,
         timestamp: DateTime.fromMillisecondsSinceEpoch((d.event.timestamp * 1000).round()),
         title: '탐지 발생 — 드론 #${d.event.droneId} · Cell ${d.event.cellId}',
         severity: switch (d.status) {

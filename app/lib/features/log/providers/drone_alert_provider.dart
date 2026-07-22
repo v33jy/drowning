@@ -22,6 +22,7 @@ class DroneAlertNotifier extends Notifier<List<LogEntry>> {
             ...state,
             LogEntry(
               type: LogEntryType.batteryLow,
+              droneId: drone.droneId,
               timestamp: DateTime.now(),
               title: '배터리 부족 — 드론 #${drone.droneId} (${drone.battery}%)',
               severity: Severity.warning,
@@ -37,6 +38,7 @@ class DroneAlertNotifier extends Notifier<List<LogEntry>> {
             ...state,
             LogEntry(
               type: LogEntryType.signalLost,
+              droneId: drone.droneId,
               timestamp: DateTime.now(),
               title: '신호 상실 — 드론 #${drone.droneId}',
               severity: Severity.danger,
