@@ -22,11 +22,6 @@ class DetectionEvent(BaseModel):
     stream_url: Optional[str] = None
 
 
-class VideoFrame(BaseModel):
-    frame_b64: str = Field(description="Single video frame, base64-encoded (JPEG/PNG)")
-    seq: int = Field(ge=0, default=0)
-
-
 # ---------------------------------------------------------------------------
 # WebSocket message envelopes sent to the Android app.
 # ---------------------------------------------------------------------------

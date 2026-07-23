@@ -16,7 +16,7 @@ init          — full state snapshot sent immediately on connection
 drone_update  — single drone's telemetry changed
 heatmap_update — full heatmap after any RSS reading
 detection     — survivor detected; includes voip_session_id for the app to open the call
-video_frame   — single camera frame relayed from the drone-side PC (no history kept)
+video_frame   — camera frame relayed from the drone's video WebSocket stream (no history kept)
 """
 
 from __future__ import annotations
