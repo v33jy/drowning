@@ -28,6 +28,7 @@ class VoipService {
   int _seq = 0;
   bool _active = false;
   bool _muted = false;
+  bool _playerReady = false;
 
   bool get isActive => _active;
   bool get isMuted => _muted;
@@ -52,17 +53,22 @@ class VoipService {
     _muted = false;
 
     // Resolve hostname → IP (InternetAddress() rejects "localhost" on iOS).
+    // Raw UDP sockets are a dart:io platform API — there is no browser API
+    // for arbitrary UDP, so this always throws UnsupportedError on Flutter
+    // Web. That's a real platform limitation (VoIP only ever targeted
+    // Android/iOS), not something to retry — it must propagate so CallSheet
+    // can show a real "not supported here" message instead of hanging.
     final resolved = await InternetAddress.lookup(Config.serverHost);
     _serverAddress = resolved.first;
 
     _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-    _socket!.listen(_onDatagram);
 
-    // Register with relay immediately — sends a silent CONTROL frame so the
-    // relay knows our address before any mic audio arrives.
-    _sendAudio(Uint8List(_bufferSize));
-
-    // Player setup: best-effort — some iOS simulator builds reject PCM streaming.
+    // Player must be fully ready *before* the socket listener is attached —
+    // otherwise a datagram arriving mid-setup triggers feedUint8FromStream()
+    // on a player that hasn't finished starting yet, which crashes native
+    // audio playback (SIGSEGV in AudioTrack.write on Android) instead of
+    // throwing a catchable Dart exception.
+    bool playerReady = false;
     try {
       await _player.openPlayer();
       await _player.startPlayerFromStream(
@@ -72,9 +78,17 @@ class VoipService {
         sampleRate: _sampleRate,
         bufferSize: _bufferSize,
       );
+      playerReady = true;
     } catch (e) {
       debugPrint('VoipService: player init failed: $e');
     }
+    _playerReady = playerReady;
+
+    _socket!.listen(_onDatagram);
+
+    // Register with relay immediately — sends a silent CONTROL frame so the
+    // relay knows our address before any mic audio arrives.
+    _sendAudio(Uint8List(_bufferSize));
 
     // Mic capture: best-effort — receive-only mode works even if recorder fails.
     try {
@@ -96,6 +110,7 @@ class VoipService {
   Future<void> stopCall() async {
     if (!_active) return;
     _active = false;
+    _playerReady = false;
 
     await _recordSub?.cancel();
     await _recorder.stop();
@@ -131,6 +146,7 @@ class VoipService {
     if (event != RawSocketEvent.read) return;
     final datagram = _socket?.receive();
     if (datagram == null || datagram.data.length <= _headerSize) return;
+    if (!_playerReady) return; // player torn down or never finished starting
     final pcm = datagram.data.sublist(_headerSize);
     // feedUint8FromStream is async; fire-and-forget is intentional here —
     // blocking the UDP receive loop would cause packet loss.

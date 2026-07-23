@@ -47,7 +47,13 @@ class DroneAlertNotifier extends Notifier<List<LogEntry>> {
         }
         _lostFlags[drone.droneId] = isLost;
       }
-    }, fireImmediately: true);
+    });
+    // No fireImmediately: writing to `state` synchronously here would run
+    // before build() returns, which Riverpod rejects ("uninitialized
+    // provider") — and it happened on every boot, since battery already
+    // starts <=20 in this scenario. The first real telemetry tick after
+    // build() still catches a drone that was already low, just one tick
+    // later instead of retroactively at construction time.
     return [];
   }
 }

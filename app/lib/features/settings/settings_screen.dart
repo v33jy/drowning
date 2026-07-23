@@ -4,10 +4,12 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/widgets/severity.dart';
 import '../../core/widgets/status_chip.dart';
 import '../control/providers/grid_provider.dart';
 import '../control/providers/ws_providers.dart';
+import '../control/widgets/legend_popup.dart';
 import 'providers/settings_provider.dart';
 
 /// 설정 — 서버 주소/포트(그룹 1), 권한 상태(그룹 2), 버전(그룹 3). 표준
@@ -136,6 +138,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const Divider(height: AppSpacing.xl),
           const _GroupLabel('정보'),
+          ListTile(
+            title: const Text('범례 보기'),
+            trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+            onTap: () => showLegendPopup(context),
+          ),
           const ListTile(
             title: Text('버전'),
             trailing: Text('1.0.0', style: TextStyle(color: AppColors.textSecondary)),
@@ -154,15 +161,7 @@ class _GroupLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.xs),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.04,
-          color: AppColors.textSecondary,
-        ),
-      ),
+      child: Text(text, style: AppTypography.eyebrow(AppColors.textSecondary)),
     );
   }
 }

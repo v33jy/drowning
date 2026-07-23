@@ -4,11 +4,11 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/metric_row.dart';
 import '../../core/widgets/severity.dart';
 import '../../core/widgets/status_chip.dart';
-import '../../navigation/tab_index_provider.dart';
 import '../control/providers/grid_provider.dart';
 import '../control/providers/map_focus_provider.dart';
 import '../detection/providers/detection_log_provider.dart';
@@ -42,6 +42,13 @@ class _LogScreenState extends ConsumerState<LogScreen> {
   DateTimeRange? _dateRange;
   final Set<int> _selectedDrones = {};
   final Set<_StatusFilter> _selectedStatuses = {};
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   bool _matchesStatus(LogEntry e) {
     if (_selectedStatuses.isEmpty) return true;
@@ -91,22 +98,36 @@ class _LogScreenState extends ConsumerState<LogScreen> {
     }).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('기록')),
+      appBar: AppBar(
+        title: const Text('기록'),
+      ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
             child: TextField(
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search, size: 20),
+              controller: _searchController,
+              style: Theme.of(context).textTheme.bodyMedium,
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search, size: 20),
                 hintText: '드론 · 셀 검색',
-                isDense: true,
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _query = '');
+                        },
+                      ),
               ),
               onChanged: (v) => setState(() => _query = v),
             ),
           ),
+          const SizedBox(height: AppSpacing.lg),
           Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: SegmentedButton<_LogFilter>(
               segments: const [
                 ButtonSegment(value: _LogFilter.all, label: Text('전체')),
@@ -116,52 +137,76 @@ class _LogScreenState extends ConsumerState<LogScreen> {
               onSelectionChanged: (s) => setState(() => _filter = s.first),
             ),
           ),
+          const SizedBox(height: AppSpacing.lg),
           Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  FilterChip(
-                    label: Text(_dateRange == null
-                        ? '날짜: 전체'
-                        : '${_dateRange!.start.month}/${_dateRange!.start.day} ~ '
-                            '${_dateRange!.end.month}/${_dateRange!.end.day}'),
-                    selected: _dateRange != null,
-                    onSelected: (_) => _pickDateRange(),
-                    avatar: const Icon(Icons.calendar_today_outlined, size: 16),
-                    onDeleted: _dateRange == null ? null : () => setState(() => _dateRange = null),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _FilterGroupLabel('날짜'),
+                const SizedBox(height: AppSpacing.xs),
+                FilterChip(
+                  label: Text(_dateRange == null
+                      ? '전체 기간'
+                      : '${_dateRange!.start.month}/${_dateRange!.start.day} ~ '
+                          '${_dateRange!.end.month}/${_dateRange!.end.day}'),
+                  selected: _dateRange != null,
+                  onSelected: (_) => _pickDateRange(),
+                  avatar: const Icon(Icons.calendar_today_outlined, size: 15),
+                  onDeleted: _dateRange == null ? null : () => setState(() => _dateRange = null),
+                ),
+                if (availableDrones.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  const _FilterGroupLabel('드론'),
+                  const SizedBox(height: AppSpacing.xs),
+                  Wrap(
+                    spacing: AppSpacing.sm,
+                    runSpacing: AppSpacing.sm,
+                    children: [
+                      for (final d in availableDrones)
+                        FilterChip(
+                          label: Text('#$d'),
+                          selected: _selectedDrones.contains(d),
+                          onSelected: (sel) => setState(
+                            () => sel ? _selectedDrones.add(d) : _selectedDrones.remove(d),
+                          ),
+                        ),
+                    ],
                   ),
-                  const SizedBox(width: AppSpacing.sm),
-                  for (final d in availableDrones) ...[
-                    FilterChip(
-                      label: Text('드론 #$d'),
-                      selected: _selectedDrones.contains(d),
-                      onSelected: (sel) => setState(
-                        () => sel ? _selectedDrones.add(d) : _selectedDrones.remove(d),
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                  ],
-                  for (final s in _StatusFilter.values) ...[
-                    FilterChip(
-                      label: Text(_statusFilterLabel(s)),
-                      selected: _selectedStatuses.contains(s),
-                      onSelected: (sel) => setState(
-                        () => sel ? _selectedStatuses.add(s) : _selectedStatuses.remove(s),
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                  ],
                 ],
-              ),
+                const SizedBox(height: AppSpacing.md),
+                const _FilterGroupLabel('상태'),
+                const SizedBox(height: AppSpacing.xs),
+                Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  children: [
+                    for (final s in _StatusFilter.values)
+                      FilterChip(
+                        label: Text(_statusFilterLabel(s)),
+                        selected: _selectedStatuses.contains(s),
+                        onSelected: (sel) => setState(
+                          () => sel ? _selectedStatuses.add(s) : _selectedStatuses.remove(s),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: AppSpacing.md),
+          const Divider(height: 1),
           Expanded(
             child: filtered.isEmpty
-                ? const Center(
-                    child: Text('기록 없음', style: TextStyle(color: AppColors.textSecondary)),
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.inbox_outlined, size: 32, color: AppColors.textSecondary),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text('기록 없음', style: Theme.of(context).textTheme.bodyMedium),
+                      ],
+                    ),
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -176,20 +221,39 @@ class _LogScreenState extends ConsumerState<LogScreen> {
   }
 }
 
+class _FilterGroupLabel extends StatelessWidget {
+  const _FilterGroupLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(text, style: AppTypography.eyebrow(AppColors.textSecondary));
+  }
+}
+
 class _LogTile extends StatelessWidget {
   const _LogTile({required this.entry});
   final LogEntry entry;
 
   @override
   Widget build(BuildContext context) {
+    final color = entry.severity.resolve(context);
+    final icon = _entryIcon(entry);
     return InkWell(
       onTap: entry.type == LogEntryType.detection ? () => _showDetail(context) : null,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            SeverityStripe(severity: entry.severity),
+            // Icon badge — what kind of event, and how urgent, at a glance.
+            // A 3px color stripe alone was too easy to miss entirely.
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
+              child: Icon(icon, size: 18, color: color),
+            ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Column(
@@ -202,8 +266,12 @@ class _LogTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (entry.type == LogEntryType.detection)
+            if (entry.type == LogEntryType.detection) ...[
+              const SizedBox(width: AppSpacing.sm),
+              StatusChip(severity: entry.severity, label: _detectionStatusLabel(entry.status!)),
+              const SizedBox(width: AppSpacing.xs),
               const Icon(Icons.chevron_right, color: AppColors.textSecondary, size: 20),
+            ],
           ],
         ),
       ),
@@ -218,6 +286,24 @@ class _LogTile extends StatelessWidget {
     );
   }
 }
+
+IconData _entryIcon(LogEntry entry) {
+  return switch (entry.type) {
+    LogEntryType.detection => switch (entry.status!) {
+        DetectionStatus.pending => Icons.warning_amber_outlined,
+        DetectionStatus.rescued => Icons.check_circle_outline,
+        DetectionStatus.falseAlarm => Icons.cancel_outlined,
+      },
+    LogEntryType.batteryLow => Icons.battery_alert,
+    LogEntryType.signalLost => Icons.wifi_off,
+  };
+}
+
+String _detectionStatusLabel(DetectionStatus status) => switch (status) {
+      DetectionStatus.pending => '처리 대기',
+      DetectionStatus.rescued => '구조 완료',
+      DetectionStatus.falseAlarm => '오탐',
+    };
 
 class _DetectionDetailSheet extends ConsumerWidget {
   const _DetectionDetailSheet({required this.entry});
@@ -265,8 +351,11 @@ class _DetectionDetailSheet extends ConsumerWidget {
                   );
                   ref.read(mapFocusRequestProvider.notifier).state = center;
                 }
-                ref.read(tabIndexProvider.notifier).state = 0;
-                Navigator.of(context).pop();
+                // 관제가 더 이상 탭이 아니라 홈 화면이라, 시트를 닫고 기록
+                // 화면 자체도 pop 해야 관제가 다시 보인다.
+                Navigator.of(context)
+                  ..pop()
+                  ..pop();
               },
             ),
           ),

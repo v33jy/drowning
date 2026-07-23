@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../../core/widgets/connection_badge.dart';
@@ -26,11 +27,26 @@ class WsClient {
   bool _disposed = false;
   String? _url;
 
+  // Broadcast streams don't replay past events to late subscribers — and
+  // BootScreen fully awaits connect() (which emits connecting → connected)
+  // *before* ControlScreen (and its ConnectionBadge listener) even exist.
+  // Without tracking the current value separately, every subscriber missed
+  // both events and permanently fell back to the badge's default display
+  // value, which is why it showed "재연결 중" forever on a perfectly healthy
+  // connection.
+  ConnectionStatus _status = ConnectionStatus.connecting;
+  ConnectionStatus get status => _status;
+
   final _statusController = StreamController<ConnectionStatus>.broadcast();
   final _messageController = StreamController<WsMessage>.broadcast();
 
   Stream<ConnectionStatus> get statusStream => _statusController.stream;
   Stream<WsMessage> get messageStream => _messageController.stream;
+
+  void _setStatus(ConnectionStatus s) {
+    _status = s;
+    _statusController.add(s);
+  }
 
   Future<void> connect(String url) async {
     if (_disposed) return;
@@ -38,12 +54,15 @@ class WsClient {
     _reconnectTimer?.cancel();
     await _channel?.sink.close();
 
-    _statusController.add(ConnectionStatus.connecting);
+    _setStatus(ConnectionStatus.connecting);
     try {
       _channel = WebSocketChannel.connect(Uri.parse(url));
       // Await the handshake before declaring "connected" — otherwise a
-      // dead server still briefly reports connected.
-      await _channel!.ready;
+      // dead server still briefly reports connected. Bounded by a timeout:
+      // an unreachable host (e.g. a stale/wrong LAN IP on a real device)
+      // can otherwise hang here indefinitely, leaving the badge stuck on
+      // "재연결 중" forever instead of failing fast and retrying.
+      await _channel!.ready.timeout(const Duration(seconds: 5));
       if (_disposed) {
         await _channel!.sink.close();
         return;
@@ -53,8 +72,9 @@ class WsClient {
         onError: (_) => _scheduleReconnect(),
         onDone: _scheduleReconnect,
       );
-      _statusController.add(ConnectionStatus.connected);
-    } catch (_) {
+      _setStatus(ConnectionStatus.connected);
+    } catch (e) {
+      debugPrint('WsClient: connect to $url failed: $e');
       _scheduleReconnect();
     }
   }
@@ -70,7 +90,7 @@ class WsClient {
 
   void _scheduleReconnect() {
     if (_disposed || _url == null) return;
-    _statusController.add(ConnectionStatus.disconnected);
+    _setStatus(ConnectionStatus.disconnected);
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(const Duration(seconds: 3), () => connect(_url!));
   }

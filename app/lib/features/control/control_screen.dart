@@ -12,18 +12,20 @@ import '../../core/widgets/severity.dart';
 import '../../models/detection_event.dart';
 import '../detection/detection_sheet.dart';
 import '../detection/providers/detection_log_provider.dart';
+import '../log/log_screen.dart';
+import '../settings/settings_screen.dart';
 import 'providers/drones_provider.dart';
 import 'providers/map_focus_provider.dart';
 import 'providers/ws_providers.dart';
 import 'widgets/drone_list_sheet.dart';
 import 'widgets/heatmap_painter.dart';
-import 'widgets/legend_popup.dart';
 import 'widgets/marker_layer.dart';
 import 'widgets/offline_banner.dart';
 
-/// 관제 화면 — the app's home tab. Map occupies ~82% of the screen; the
-/// drone list sheet always peeks at the bottom; the map itself is never
-/// covered by a Fullscreen Dialog.
+enum _ControlMenuItem { log, settings }
+
+/// 관제 화면 — the app's sole home screen. 기록/설정 are reached via the
+/// menu icon (pushed routes with their own back button), not bottom tabs.
 class ControlScreen extends ConsumerStatefulWidget {
   const ControlScreen({super.key});
 
@@ -140,23 +142,79 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                     );
                   },
                 ),
+                const SizedBox(width: AppSpacing.sm),
+                _ControlMenuButton(
+                  onSelected: (item) {
+                    final route = switch (item) {
+                      _ControlMenuItem.log => const LogScreen(),
+                      _ControlMenuItem.settings => const SettingsScreen(),
+                    };
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => route));
+                  },
+                ),
               ],
             ),
           ),
-          Positioned(
-            right: AppSpacing.md,
-            bottom: MediaQuery.of(context).size.height * 0.15 + AppSpacing.md,
-            child: FloatingActionButton.small(
-              heroTag: 'legend-fab',
-              onPressed: () => showLegendPopup(context),
-              backgroundColor: AppColors.surface,
-              foregroundColor: AppColors.textPrimary,
-              child: const Icon(Icons.layers_outlined),
-            ),
-          ),
-          const DroneListSheet(),
+          const DroneListBar(),
         ],
       ),
+    );
+  }
+}
+
+class _ControlMenuButton extends StatelessWidget {
+  const _ControlMenuButton({required this.onSelected});
+
+  final ValueChanged<_ControlMenuItem> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 6, offset: const Offset(0, 1)),
+        ],
+      ),
+      child: PopupMenuButton<_ControlMenuItem>(
+        tooltip: '메뉴',
+        padding: EdgeInsets.zero,
+        icon: const Icon(Icons.menu_outlined, color: AppColors.textPrimary, size: 20),
+        offset: const Offset(0, AppSpacing.xl),
+        onSelected: onSelected,
+        itemBuilder: (context) => const [
+          PopupMenuItem(
+            value: _ControlMenuItem.log,
+            child: _MenuRow(icon: Icons.list_alt_outlined, label: '기록'),
+          ),
+          PopupMenuItem(
+            value: _ControlMenuItem.settings,
+            child: _MenuRow(icon: Icons.settings_outlined, label: '설정'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: AppColors.textSecondary),
+        const SizedBox(width: AppSpacing.md),
+        Text(label, style: Theme.of(context).textTheme.bodyMedium),
+      ],
     );
   }
 }

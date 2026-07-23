@@ -1,35 +1,33 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/widgets/app_bottom_sheet.dart';
-import '../../../core/widgets/metric_row.dart';
+import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/severity.dart';
 import '../../../core/widgets/status_chip.dart';
 import '../../../models/drone_state.dart';
 import '../providers/drones_provider.dart';
 import '../providers/heatmap_provider.dart';
+import '../providers/video_frame_provider.dart';
 import 'marker_layer.dart';
 
-const double _kPeek = 0.15;
-const double _kMid = 0.5;
-const double _kFull = 0.9;
-const double _kTableThreshold = 0.75;
-
-/// Drone list Bottom Sheet — persistent, always peeking. Dragging past
-/// [_kTableThreshold] switches the same data into a table layout, which is
-/// what used to be a separate "드론 관리" screen — there is no dedicated
-/// route for it anymore, this sheet's expanded state *is* that screen.
-class DroneListSheet extends ConsumerStatefulWidget {
-  const DroneListSheet({super.key});
+/// Drone info bar — always visible at the bottom of 관제. There is no
+/// separate "전체 보기" view anymore — it never showed anything the compact
+/// chip row + inline detail couldn't, so it was cut rather than kept as
+/// redundant chrome. Tapping a chip expands that drone's detail inline,
+/// right below the chip row.
+class DroneListBar extends ConsumerStatefulWidget {
+  const DroneListBar({super.key});
 
   @override
-  ConsumerState<DroneListSheet> createState() => _DroneListSheetState();
+  ConsumerState<DroneListBar> createState() => _DroneListBarState();
 }
 
-class _DroneListSheetState extends ConsumerState<DroneListSheet> {
-  double _extent = _kPeek;
+class _DroneListBarState extends ConsumerState<DroneListBar> {
+  int? _selectedDroneId;
 
   @override
   Widget build(BuildContext context) {
@@ -40,42 +38,74 @@ class _DroneListSheetState extends ConsumerState<DroneListSheet> {
         ..sort((a, b) => _severityRank(a).compareTo(_severityRank(b))))
         _DroneRow(drone: d, rssDbm: heatmap[d.cellId]?.rssDbm),
     ];
-    final showTable = _extent >= _kTableThreshold;
 
-    return NotificationListener<DraggableScrollableNotification>(
-      onNotification: (notification) {
-        setState(() => _extent = notification.extent);
-        return false;
-      },
-      child: DraggableScrollableSheet(
-        initialChildSize: _kPeek,
-        minChildSize: _kPeek,
-        maxChildSize: _kFull,
-        snap: true,
-        snapSizes: const [_kPeek, _kMid, _kFull],
-        builder: (context, scrollController) {
-          return DecoratedBox(
-            decoration: const BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
-              boxShadow: [
-                BoxShadow(color: Color(0x14000000), blurRadius: 8, offset: Offset(0, -2)),
-              ],
-            ),
+    _DroneRow? selectedRow;
+    for (final r in rows) {
+      if (r.drone.droneId == _selectedDroneId) {
+        selectedRow = r;
+        break;
+      }
+    }
+    if (selectedRow == null && _selectedDroneId != null) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => setState(() => _selectedDroneId = null));
+    }
+
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
+          boxShadow: [
+            BoxShadow(color: Color(0x14000000), blurRadius: 8, offset: Offset(0, -2)),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg, AppSpacing.sm, AppSpacing.md, AppSpacing.sm),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SheetHandle(),
-                Expanded(
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+                  child: Text('드론 ${rows.length}대', style: Theme.of(context).textTheme.titleMedium),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                SizedBox(
+                  height: 44,
                   child: rows.isEmpty
                       ? const _EmptyDrones()
-                      : showTable
-                          ? _DroneTable(rows: rows, scrollController: scrollController)
-                          : _DroneCardList(rows: rows, scrollController: scrollController),
+                      : _CompactChipRow(
+                          rows: rows,
+                          selectedId: _selectedDroneId,
+                          onTap: (id) => setState(
+                            () => _selectedDroneId = _selectedDroneId == id ? null : id,
+                          ),
+                        ),
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
+                  child: selectedRow == null
+                      ? const SizedBox(width: double.infinity)
+                      : Padding(
+                          padding: const EdgeInsets.only(top: AppSpacing.sm),
+                          child: _InlineDroneDetail(
+                            row: selectedRow,
+                            onClose: () => setState(() => _selectedDroneId = null),
+                          ),
+                        ),
                 ),
               ],
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
@@ -101,130 +131,183 @@ class _EmptyDrones extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text('연결된 드론 없음', style: TextStyle(color: AppColors.textSecondary)),
+    return const Align(
+      alignment: Alignment.centerLeft,
+      child: Text('연결된 드론 없음', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
     );
   }
 }
 
-/// Peek/mid state — one card per drone with the 7 fields the design calls
-/// for (ID/Battery/Altitude/Position/RSS/Cell/Status).
-class _DroneCardList extends StatelessWidget {
-  const _DroneCardList({required this.rows, required this.scrollController});
+/// Compact chip per drone — tapping one expands/collapses its inline detail.
+class _CompactChipRow extends StatelessWidget {
+  const _CompactChipRow({required this.rows, required this.selectedId, required this.onTap});
   final List<_DroneRow> rows;
-  final ScrollController scrollController;
+  final int? selectedId;
+  final ValueChanged<int> onTap;
 
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
-      controller: scrollController,
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, AppSpacing.xl),
+      scrollDirection: Axis.horizontal,
       itemCount: rows.length,
-      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.md),
-      itemBuilder: (context, i) => _DroneCard(row: rows[i]),
+      separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+      itemBuilder: (context, i) {
+        final row = rows[i];
+        final d = row.drone;
+        final severity = droneSeverity(d);
+        final selected = d.droneId == selectedId;
+        return InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          onTap: () => onTap(d.droneId),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: selected ? AppColors.primary.withValues(alpha: 0.1) : null,
+              border: Border.all(color: selected ? AppColors.primary : AppColors.border),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SeverityDot(severity: severity),
+                const SizedBox(width: AppSpacing.xs),
+                Text('#${d.droneId}', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(width: AppSpacing.sm),
+                Text(
+                  '${d.battery}%',
+                  style: AppTypography.numeric(color: AppColors.textSecondary, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
 
-class _DroneCard extends StatelessWidget {
-  const _DroneCard({required this.row});
+/// Shown inline below the chip row when a chip is selected — no separate
+/// popup stacked on top of the bar.
+class _InlineDroneDetail extends ConsumerWidget {
+  const _InlineDroneDetail({required this.row, required this.onClose});
+  final _DroneRow row;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final frameB64 = ref.watch(videoFrameProvider.select((m) => m[row.drone.droneId]));
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // No "드론 #N" title here — the highlighted chip right above already
+        // shows which drone is selected; repeating it here was redundant.
+        Align(
+          alignment: Alignment.centerRight,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: onClose,
+            child: const Padding(
+              padding: EdgeInsets.all(2),
+              child: Icon(Icons.close, size: 18, color: AppColors.textSecondary),
+            ),
+          ),
+        ),
+        _DroneKeyValueTable(row: row),
+        const SizedBox(height: AppSpacing.sm),
+        _VideoThumbnail(frameB64: frameB64),
+      ],
+    );
+  }
+}
+
+/// Rough live-glance preview — last received frame only, no buffering or
+/// real player. Just enough to show "this is roughly what the drone sees".
+/// Full-width, below the stat table — a side thumbnail read as an
+/// afterthought; this is meant to be the second thing you look at.
+class _VideoThumbnail extends StatelessWidget {
+  const _VideoThumbnail({required this.frameB64});
+  final String? frameB64;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: Container(
+        width: double.infinity,
+        height: 160,
+        color: AppColors.surfaceSunken,
+        child: frameB64 == null
+            ? const Center(
+                child: Icon(Icons.videocam_off_outlined, size: 28, color: AppColors.textSecondary),
+              )
+            : Image.memory(base64Decode(frameB64!), fit: BoxFit.contain, gaplessPlayback: true),
+      ),
+    );
+  }
+}
+
+/// Single-drone table — attribute-per-column, one label row + one value row.
+/// This bottom bar is very wide, so a column-per-attribute strip fills it
+/// naturally; a row-per-attribute list left it narrow with a huge empty
+/// gutter beside it no matter how tight the column widths got.
+class _DroneKeyValueTable extends StatelessWidget {
+  const _DroneKeyValueTable({required this.row});
   final _DroneRow row;
 
   @override
   Widget build(BuildContext context) {
     final d = row.drone;
-    final severity = droneSeverity(d);
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text('드론 #${d.droneId}', style: Theme.of(context).textTheme.titleMedium),
-              const Spacer(),
-              StatusChip(severity: severity, label: _statusLabel(d.status)),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          MetricRow(label: '배터리', value: '${d.battery}', unit: '%'),
-          const SizedBox(height: AppSpacing.xs),
-          MetricRow(label: '고도', value: d.altitude.toStringAsFixed(0), unit: 'm'),
-          const SizedBox(height: AppSpacing.xs),
-          MetricRow(
-            label: '위치',
-            value: '${d.lat.toStringAsFixed(4)}, ${d.lng.toStringAsFixed(4)}',
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          MetricRow(
-            label: 'RSS',
-            value: row.rssDbm?.toStringAsFixed(1) ?? '—',
-            unit: row.rssDbm != null ? 'dBm' : null,
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          MetricRow(label: '셀', value: d.cellId ?? '—'),
-        ],
-      ),
-    );
-  }
-}
-
-/// Full state (>=90%) — replaces the old dedicated "드론 관리" table screen.
-/// Horizontal scroll rather than collapsing columns, per the engineering
-/// review (comparing many drones at once matters more than fitting one
-/// screen width).
-class _DroneTable extends StatelessWidget {
-  const _DroneTable({required this.rows, required this.scrollController});
-  final List<_DroneRow> rows;
-  final ScrollController scrollController;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      controller: scrollController,
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, AppSpacing.xl),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          columns: const [
-            DataColumn(label: Text('DRONE')),
-            DataColumn(label: Text('BATTERY'), numeric: true),
-            DataColumn(label: Text('ALT'), numeric: true),
-            DataColumn(label: Text('RSS'), numeric: true),
-            DataColumn(label: Text('CELL')),
-            DataColumn(label: Text('STATUS')),
-          ],
-          rows: [
-            for (final row in rows)
-              DataRow(
-                cells: [
-                  DataCell(Text('#${row.drone.droneId}')),
-                  DataCell(Text('${row.drone.battery}%')),
-                  DataCell(Text(row.drone.altitude.toStringAsFixed(0))),
-                  DataCell(Text(row.rssDbm?.toStringAsFixed(1) ?? '—')),
-                  DataCell(Text(row.drone.cellId ?? '—')),
-                  DataCell(StatusChip(
-                    severity: droneSeverity(row.drone),
-                    label: _statusLabel(row.drone.status),
-                  )),
-                ],
-              ),
+    return Table(
+      border: TableBorder.all(color: AppColors.border, width: 1, borderRadius: BorderRadius.circular(AppRadius.sm)),
+      // Equal flex columns — the table stretches to fill this wide bottom
+      // bar edge-to-edge instead of hugging content and floating small to
+      // one side; centering each cell's content keeps the extra width from
+      // reading as a lopsided empty gutter.
+      columnWidths: const {
+        0: FlexColumnWidth(),
+        1: FlexColumnWidth(),
+        2: FlexColumnWidth(),
+        3: FlexColumnWidth(),
+        4: FlexColumnWidth(),
+      },
+      children: [
+        TableRow(
+          decoration: const BoxDecoration(color: AppColors.surfaceSunken),
+          children: [
+            _headCell('배터리'),
+            _headCell('고도'),
+            _headCell('RSS'),
+            _headCell('셀'),
+            _headCell('상태'),
           ],
         ),
-      ),
+        TableRow(
+          children: [
+            _cell(Text('${d.battery}%', style: _valueStyle)),
+            _cell(Text('${d.altitude.toStringAsFixed(0)} m', style: _valueStyle)),
+            _cell(Text(row.rssDbm != null ? '${row.rssDbm!.toStringAsFixed(1)} dBm' : '—', style: _valueStyle)),
+            _cell(Text(d.cellId ?? '—', style: _valueStyle)),
+            _cell(StatusChip(severity: droneSeverity(d), label: droneStatusLabel(d))),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static const _valueStyle = TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary);
+
+  Widget _headCell(String label) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+      child: Text(label, textAlign: TextAlign.center, style: AppTypography.eyebrow(AppColors.textSecondary)),
+    );
+  }
+
+  Widget _cell(Widget child) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+      child: Center(child: child),
     );
   }
 }
-
-String _statusLabel(String status) => switch (status) {
-      'active' => '정상',
-      'returning' => '복귀 중',
-      'lost' => 'Offline',
-      _ => status,
-    };

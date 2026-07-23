@@ -4,7 +4,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
-import '../../navigation/root_shell.dart';
+import '../control/control_screen.dart';
 import '../control/providers/grid_provider.dart';
 import '../control/providers/ws_providers.dart';
 import '../settings/providers/settings_provider.dart';
@@ -98,7 +98,7 @@ class _BootScreenState extends ConsumerState<BootScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_phase == _BootPhase.success) return const RootShell();
+    if (_phase == _BootPhase.success) return const ControlScreen();
 
     final Widget content = switch (_phase) {
       _BootPhase.splash => const _SplashBody(),

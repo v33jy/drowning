@@ -7,7 +7,7 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../services/voip_service.dart';
 
-enum _CallPhase { connecting, connected }
+enum _CallPhase { connecting, connected, failed }
 
 /// VoIP call sheet — pushed on top of the Detection Sheet (not replacing
 /// it), so popping this one returns to the detection sheet automatically.
@@ -34,8 +34,18 @@ class _CallSheetState extends State<CallSheet> {
     _start();
   }
 
+  String? _error;
+
   Future<void> _start() async {
-    await _voip.startCall(widget.sessionId);
+    try {
+      await _voip.startCall(widget.sessionId);
+    } catch (e) {
+      // Raw UDP sockets don't exist on Flutter Web — startCall() always
+      // throws there. Show that plainly instead of leaving the sheet stuck
+      // on a spinner forever with no visible explanation.
+      if (mounted) setState(() { _phase = _CallPhase.failed; _error = e.toString(); });
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _phase = _CallPhase.connected;
@@ -55,7 +65,7 @@ class _CallSheetState extends State<CallSheet> {
   Future<void> _end() async {
     _ticker?.cancel();
     await _voip.stopCall();
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) Navigator.of(context).pop(true);
   }
 
   @override
@@ -67,6 +77,44 @@ class _CallSheetState extends State<CallSheet> {
 
   @override
   Widget build(BuildContext context) {
+    if (_phase == _CallPhase.failed) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, color: AppColors.danger, size: 32),
+            const SizedBox(height: AppSpacing.sm),
+            Text('통화 연결 실패', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.xs),
+            const Text(
+              '이 기기/환경에서는 음성 통화 기능을 사용할 수 없습니다.',
+              style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                _error!,
+                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            const SizedBox(height: AppSpacing.lg),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('닫기'),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final connected = _phase == _CallPhase.connected;
     final minutes = _elapsed.inMinutes.toString().padLeft(2, '0');
     final seconds = (_elapsed.inSeconds % 60).toString().padLeft(2, '0');

@@ -26,6 +26,17 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: PublicSans
+      fonts:
+        - asset: assets/fonts/PublicSans-Variable.ttf
+          weight: 400
+        - asset: assets/fonts/PublicSans-Variable.ttf
+          weight: 500
+        - asset: assets/fonts/PublicSans-Variable.ttf
+          weight: 600
+        - asset: assets/fonts/PublicSans-Variable.ttf
+          weight: 700
 
 dependency_overrides:
   record_linux: ^2.1.1

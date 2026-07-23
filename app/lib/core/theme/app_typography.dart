@@ -1,28 +1,21 @@
 import 'package:flutter/material.dart';
 
 /// Typography — single sans family, Bold titles / Regular body only.
-///
-/// The design system calls for Pretendard. No font asset is bundled here —
-/// [fontFamily] is left `null` so the platform default is used
-/// (San Francisco on iOS, Roboto/Noto Sans CJK on Android), which reads very
-/// close to Pretendard for Korean text. To switch to the real Pretendard
-/// font once the .otf files are available: drop them under
-/// `assets/fonts/`, register a `fonts:` block in pubspec.yaml, and set
-/// [fontFamily] to that family name — every TextStyle below picks it up
-/// automatically through [TextTheme.apply].
 class AppTypography {
   AppTypography._();
 
-  static const String? fontFamily = null;
+  static const String fontFamily = 'PublicSans';
 
   static TextTheme textTheme(Color textPrimary, Color textSecondary) {
     return TextTheme(
-      // Display — screen-level headings.
+      // Display — screen-level headings. Slightly tightened tracking reads
+      // more deliberate at this size than default spacing.
       displaySmall: TextStyle(
-        fontSize: 28,
+        fontSize: 26,
         fontWeight: FontWeight.w700,
         color: textPrimary,
         height: 1.25,
+        letterSpacing: -0.3,
       ),
       // Title — section/dialog/sheet headers.
       titleLarge: TextStyle(
@@ -30,10 +23,15 @@ class AppTypography {
         fontWeight: FontWeight.w700,
         color: textPrimary,
         height: 1.3,
+        letterSpacing: -0.1,
       ),
+      // titleMedium is used everywhere (card headers, drone ids, tile
+      // titles) — w600 rather than w700 so it reads as "a heading" without
+      // shouting as loud as titleLarge; when every weight is 700, nothing
+      // stands out as more important than anything else.
       titleMedium: TextStyle(
         fontSize: 15,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
         color: textPrimary,
         height: 1.3,
       ),
@@ -45,7 +43,7 @@ class AppTypography {
         height: 1.5,
       ),
       bodyMedium: TextStyle(
-        fontSize: 15,
+        fontSize: 14.5,
         fontWeight: FontWeight.w400,
         color: textPrimary,
         height: 1.5,
@@ -58,11 +56,11 @@ class AppTypography {
         height: 1.4,
       ),
       labelMedium: TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w700,
+        fontSize: 12.5,
+        fontWeight: FontWeight.w600,
         color: textSecondary,
         height: 1.4,
-        letterSpacing: 0.02,
+        letterSpacing: 0.01,
       ),
     ).apply(fontFamily: fontFamily);
   }
@@ -82,4 +80,15 @@ class AppTypography {
       fontFeatures: const [FontFeature.tabularFigures()],
     );
   }
+
+  /// Small uppercase-weight section label (기록/설정 group headers, table
+  /// column headers, stat labels) — one definition instead of the same
+  /// fontSize/weight/letterSpacing tuple copy-pasted into five widgets.
+  static TextStyle eyebrow(Color color) => TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.04,
+        color: color,
+        fontFamily: fontFamily,
+      );
 }

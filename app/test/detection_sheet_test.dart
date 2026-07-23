@@ -36,15 +36,15 @@ void main() {
     await pumpSheet(tester);
 
     expect(find.text('통화 연결'), findsOneWidget);
-    expect(find.text('오탐 처리'), findsOneWidget);
-    expect(find.text('최소화'), findsOneWidget);
+    expect(find.byIcon(Icons.flag_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.remove_circle_outline), findsOneWidget);
     expect(find.text('구조 완료'), findsNothing);
   });
 
   testWidgets('오탐 처리는 확인 다이얼로그 없이 바로 처리되지 않는다', (tester) async {
     await pumpSheet(tester);
 
-    await tester.tap(find.text('오탐 처리'));
+    await tester.tap(find.byIcon(Icons.flag_outlined));
     await tester.pumpAndSettle();
 
     expect(find.text('오탐으로 처리할까요?'), findsOneWidget);
@@ -75,7 +75,7 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('최소화'));
+    await tester.tap(find.byIcon(Icons.remove_circle_outline));
     await tester.pumpAndSettle();
 
     expect(find.text('outcome:minimized'), findsOneWidget);

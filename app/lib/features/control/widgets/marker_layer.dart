@@ -14,6 +14,17 @@ Severity droneSeverity(DroneState d) {
   return Severity.ok;
 }
 
+/// Label shown alongside [droneSeverity] — derived from the *same* battery
+/// thresholds, never from the raw telemetry `status` string directly. Those
+/// two used to be computed independently (severity from battery, label from
+/// `status`), which could show "정상" in red when battery was critical.
+String droneStatusLabel(DroneState d) => switch (droneSeverity(d)) {
+      Severity.offline => 'Offline',
+      Severity.danger => '위험',
+      Severity.warning => '주의',
+      Severity.ok => '정상',
+    };
+
 /// Drone markers only — rebuilds when [dronesProvider] changes, independent
 /// of the FlutterMap widget itself (map position/zoom survives untouched).
 class DroneMarkerLayer extends ConsumerWidget {

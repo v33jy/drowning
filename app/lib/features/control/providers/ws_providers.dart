@@ -12,6 +12,12 @@ final wsClientProvider = Provider<WsClient>((ref) {
   return client;
 });
 
-final wsConnectionProvider = StreamProvider<ConnectionStatus>((ref) {
-  return ref.watch(wsClientProvider).statusStream;
+final wsConnectionProvider = StreamProvider<ConnectionStatus>((ref) async* {
+  final client = ref.watch(wsClientProvider);
+  // Seed with whatever the status already is — statusStream is a broadcast
+  // stream, so a subscriber that starts watching after connect() already
+  // ran (which is always, since BootScreen awaits it before ControlScreen
+  // exists) would otherwise miss every past event and never see anything.
+  yield client.status;
+  yield* client.statusStream;
 });
