@@ -8,13 +8,14 @@ thin: parse the request, call the matching function here, shape the response.
 
 from __future__ import annotations
 
+import base64
 import time
 
 from fastapi import HTTPException
 
 import state
 from heatmap import latlng_to_cell_id
-from models import DetectionEvent, DroneTelemetry, SignalReading, VideoFrame, WsMessage
+from models import DetectionEvent, DroneTelemetry, SignalReading, WsMessage
 from voip.session import VoIPSession
 
 
@@ -80,10 +81,8 @@ async def report_detection(event: DetectionEvent) -> dict:
     return entry
 
 
-async def submit_video_frame(drone_id: int, frame: VideoFrame) -> None:
-    if drone_id not in state.drone_states:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Drone {drone_id} has not sent telemetry yet.",
-        )
-    await state.manager.broadcast(WsMessage.video_frame(drone_id, frame.frame_b64, frame.seq))
+async def submit_video_frame(drone_id: int, frame_bytes: bytes, seq: int) -> None:
+    """frame_bytes is a single raw JPEG frame — encoding happens only on this last
+    hop (server → app), so the drone → server WebSocket stays fully binary."""
+    frame_b64 = base64.b64encode(frame_bytes).decode("ascii")
+    await state.manager.broadcast(WsMessage.video_frame(drone_id, frame_b64, seq))

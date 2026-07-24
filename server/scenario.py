@@ -12,7 +12,6 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import base64
 import math
 import os
 import socket
@@ -23,14 +22,17 @@ import zlib
 from pathlib import Path
 
 import httpx
+import websockets
 
 SERVER_URL = os.environ.get("DRONE_SERVER_URL", "http://localhost:8001")
+WS_URL     = SERVER_URL.replace("http://", "ws://").replace("https://", "wss://")
 VOIP_HOST  = os.environ.get("VOIP_HOST", "localhost")
 VOIP_PORT  = 5005
 
 # 영상 프레임 시뮬레이션 (단색 PNG, 카메라 하드웨어 없이 파이프라인 검증용)
 VIDEO_WIDTH, VIDEO_HEIGHT = 160, 120
 VIDEO_COLORS = [(220, 40, 40), (40, 180, 80), (40, 100, 220), (230, 200, 40)]
+VIDEO_FPS = 10
 
 # 격자 범위 (서버 config와 동일하게 맞춤)
 GRID_LAT_MIN, GRID_LAT_MAX = 37.490, 37.515
@@ -44,7 +46,7 @@ START_LNG = 127.0276
 TARGET_LAT = 37.5044
 TARGET_LNG = 127.0248
 
-DRONE_ID   = 1
+DRONE_ID   = int(os.environ.get("DRONE_ID", "1"))
 STEPS      = 30          # 이동 단계 수 (~30초)
 ALTITUDE   = 50.0
 
@@ -101,36 +103,56 @@ async def run() -> None:
         # ── Phase 4: receiver 자동 기동 + TTS 준비 ───────────────────────
         pcm_data = _generate_tts(TTS_SCRIPT)   # 미리 생성 (1~2초 소요)
 
+        # 탐지 시점부터 영상은 별도 WebSocket 연결로 계속 스트리밍 (텔레메트리 주기와 무관)
+        video_task = asyncio.create_task(_stream_video())
+
         receiver = _start_receiver(voip_id)     # Python receiver 기동
         print("VoIP 수신기 기동 — 2초 후 음성 전송...")
-        for i in range(2):
+        for _ in range(2):
             await _telemetry(client, TARGET_LAT, TARGET_LNG, 100 - STEPS * 0.25)
-            await _video_frame(client, i)  # 탐지 시점부터 영상 프리뷰 채워지기 시작
             await asyncio.sleep(1)
 
-        # ── Phase 5: UDP 전송 ─────────────────────────────────────────────
-        await _send_audio(pcm_data, voip_id)
-        receiver.wait()                         # 재생 완료 대기
+        try:
+            # ── Phase 5: UDP 전송 ─────────────────────────────────────────
+            await _send_audio(pcm_data, voip_id)
+            receiver.wait()                     # 재생 완료 대기
 
-        # ── Phase 6: 계속 호버링 ─────────────────────────────────────────
-        print("\n드론 현장 호버링 중 (Ctrl+C로 종료)\n")
-        tick = 0
-        while True:
-            bat = max(10, 100 - STEPS * 0.25 - tick * 0.1)
-            await _telemetry(client, TARGET_LAT, TARGET_LNG, bat)
-            await _video_frame(client, tick + 2)  # Phase 4의 seq(0,1) 다음부터 이어감
-            tick += 1
-            await asyncio.sleep(2)
+            # ── Phase 6: 계속 호버링 ───────────────────────────────────────
+            print("\n드론 현장 호버링 중 (Ctrl+C로 종료)\n")
+            tick = 0
+            while True:
+                bat = max(10, 100 - STEPS * 0.25 - tick * 0.1)
+                await _telemetry(client, TARGET_LAT, TARGET_LNG, bat)
+                tick += 1
+                await asyncio.sleep(2)
+        finally:
+            video_task.cancel()
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-async def _video_frame(client: httpx.AsyncClient, seq: int) -> None:
-    color = VIDEO_COLORS[seq % len(VIDEO_COLORS)]
-    frame_b64 = base64.b64encode(_png_bytes(VIDEO_WIDTH, VIDEO_HEIGHT, color)).decode("ascii")
-    await client.post(f"/drones/{DRONE_ID}/video", json={"frame_b64": frame_b64, "seq": seq})
+async def _stream_video() -> None:
+    """Open one WS connection and push frames continuously at VIDEO_FPS —
+    this is what real streaming looks like, vs. the old POST-per-frame hack.
+    Runs as a background task until cancelled; reconnects if the socket drops.
+    """
+    url = f"{WS_URL}/drones/{DRONE_ID}/video"
+    seq = 0
+    while True:
+        try:
+            async with websockets.connect(url) as ws:
+                while True:
+                    color = VIDEO_COLORS[(seq // VIDEO_FPS) % len(VIDEO_COLORS)]  # 1초에 한 번 색 전환
+                    frame = _png_bytes(VIDEO_WIDTH, VIDEO_HEIGHT, color)
+                    await ws.send(frame)
+                    seq += 1
+                    await asyncio.sleep(1 / VIDEO_FPS)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            await asyncio.sleep(1)  # 서버 재시작 등으로 끊기면 잠시 후 재연결
 
 
 def _png_bytes(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
