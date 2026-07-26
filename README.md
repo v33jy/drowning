@@ -14,10 +14,14 @@
                      [VoIP UDP 릴레이 :5005]
                          SURVIVOR ◀──────────────────────────────▶ CONTROL
                        scenario.py                              Flutter 앱
+
+[라즈베리파이 게이트웨이]  (실제 UART 하드웨어 연동, 위와 동일한 엔드포인트를 침)
+  server/gateway/main.py  ──HTTP──▶  위와 동일 (telemetry·signal·detection)
 ```
 
 - `server/` — FastAPI 백엔드. 드론 텔레메트리·신호·탐지·영상을 받아서 WebSocket으로 관제 앱에 뿌리고, 음성 통화는 UDP로 직접 중계함
 - `app/` — Flutter 관제 앱 (iPad 대상, 가로 고정). 지도 위에 드론 위치, 전파 히트맵, 탐지 팝업, 영상 프리뷰, 음성 통화 버튼을 보여줌
+- `server/gateway/` — 라즈베리파이에서 실행하는 게이트웨이. UART로 실제 드론 패킷을 받아 서버로 전달함 (`scenario.py`가 이 역할을 가짜 데이터로 대신하는 것과 같은 자리)
 
 ## 실행 방법
 
@@ -56,6 +60,22 @@ DRONE_SERVER_URL=http://localhost:8001 python3 -u scenario.py
 ```
 
 강남역에서 출발해서 신논현역 6번 출구까지 30초 정도 이동하며 신호가 점점 강해지고, 도착하면 요구조자 탐지 이벤트가 뜨면서 TTS로 만든 음성이 VoIP로 전송되고, 이후 영상 프레임도 계속 전송되며 그 자리에서 호버링합니다.
+
+### 4. 라즈베리파이 게이트웨이 (실제 하드웨어 연동)
+
+`scenario.py`/`dummy.py` 대신 실제 UART 하드웨어로 telemetry·signal·detection을 보내고 싶을 때 씁니다.
+서버가 켜진 상태에서, 라즈베리파이 또는 다른 터미널에서:
+
+```bash
+cd server/gateway
+pip install -r requirements.txt
+
+# 하드웨어 없이 먼저 파이프라인만 확인
+INPUT_MODE=mock SERVER_URL=http://localhost:8001 python3 main.py
+```
+
+실제 UART 장치를 붙일 땐 `INPUT_MODE=serial`로, 패킷 포맷이 맞는지 먼저 확인하고 싶으면
+`INPUT_MODE=raw_debug`로 실행하면 됩니다. 자세한 환경변수는 `server/gateway/README.md` 참고.
 
 ## 참고
 - 서버는 DB 없이 전부 인메모리로 동작합니다. 재시작하면 상태가 초기화됩니다.
