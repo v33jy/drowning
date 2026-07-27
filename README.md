@@ -15,13 +15,14 @@
                          SURVIVOR ◀──────────────────────────────▶ CONTROL
                        scenario.py                              Flutter 앱
 
-[라즈베리파이 게이트웨이]  (실제 UART 하드웨어 연동, 위와 동일한 엔드포인트를 침)
-  server/gateway/main.py  ──HTTP──▶  위와 동일 (telemetry·signal·detection)
+[라즈베리파이 (pi/)]      (실제 UART 하드웨어·카메라 연동, 위와 동일한 엔드포인트를 침)
+  pi/gateway/main.py      ──HTTP──▶  위와 동일 (telemetry·signal·detection)
+  pi/camera_stream.py     ──WS(스트림)──▶  /drones/{id}/video
 ```
 
 - `server/` — FastAPI 백엔드. 드론 텔레메트리·신호·탐지·영상을 받아서 WebSocket으로 관제 앱에 뿌리고, 음성 통화는 UDP로 직접 중계함
 - `app/` — Flutter 관제 앱 (iPad 대상, 가로 고정). 지도 위에 드론 위치, 전파 히트맵, 탐지 팝업, 영상 프리뷰, 음성 통화 버튼을 보여줌
-- `server/gateway/` — 라즈베리파이에서 실행하는 게이트웨이. UART로 실제 드론 패킷을 받아 서버로 전달함 (`scenario.py`가 이 역할을 가짜 데이터로 대신하는 것과 같은 자리)
+- `pi/` — 실제 라즈베리파이에 올려서 실행하는 코드. `gateway/`(UART로 받은 드론 패킷을 서버로 전달, `scenario.py`가 가짜 데이터로 대신하는 것과 같은 자리)와 `camera_stream.py`(카메라 영상을 서버로 스트리밍)
 
 ## 실행 방법
 
@@ -67,7 +68,7 @@ DRONE_SERVER_URL=http://localhost:8001 python3 -u scenario.py
 서버가 켜진 상태에서, 라즈베리파이 또는 다른 터미널에서:
 
 ```bash
-cd server/gateway
+cd pi/gateway
 pip install -r requirements.txt
 
 # 하드웨어 없이 먼저 파이프라인만 확인
@@ -75,7 +76,15 @@ INPUT_MODE=mock SERVER_URL=http://localhost:8001 python3 main.py
 ```
 
 실제 UART 장치를 붙일 땐 `INPUT_MODE=serial`로, 패킷 포맷이 맞는지 먼저 확인하고 싶으면
-`INPUT_MODE=raw_debug`로 실행하면 됩니다. 자세한 환경변수는 `server/gateway/README.md` 참고.
+`INPUT_MODE=raw_debug`로 실행하면 됩니다. 자세한 환경변수는 `pi/gateway/README.md` 참고.
+
+카메라 영상을 같이 스트리밍하려면 라즈베리파이에서 별도 터미널로:
+
+```bash
+cd pi
+pip install picamera2 opencv-python-headless websockets
+python3 camera_stream.py --drone-id 1 --fps 12
+```
 
 ## 참고
 - 서버는 DB 없이 전부 인메모리로 동작합니다. 재시작하면 상태가 초기화됩니다.
