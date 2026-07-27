@@ -5,10 +5,12 @@
 
 ## 주요 기능
 
-- Mock 테스트 데이터 생성 (하드웨어 없이 파이프라인 검증)
-- UART 데이터 수신 및 파싱
+- Mock 테스트 데이터 생성 — 강남역→신논현역 접근 시나리오를 재현해서 하드웨어 없이도
+  `DETECTION_MODE=rss_threshold` 탐지 트리거까지 확인 가능
+- UART 데이터 수신 및 파싱, 연결이 끊기면(케이블 접촉 불량 등) 죽지 않고 자동 재연결
 - 텔레메트리·신호세기 서버 전송, 실패 시 자동 재시도
 - 탐지(survivor detection) 이벤트 전송 — FPGA 인터럽트 또는 RSS 임계값, 둘 중 선택 가능
+  (그리드 범위 밖이라 cell_id가 없으면 재시도 낭비 없이 보류)
 - 원본 패킷 확인용 디버그 모드
 
 ## 패킷 형식 (잠정 — 실기기 연결 후 검증 필요)
@@ -50,6 +52,7 @@ INPUT_MODE=raw_debug SERIAL_PORT=/dev/ttyUSB0 python3 main.py
 | `DETECTION_MODE` | `fpga` | `fpga`(인터럽트 대기, 아직 미구현) / `rss_threshold`(RSS 임계값으로 자체 판단) |
 | `RSS_DETECTION_THRESHOLD` | `-45.0` | `rss_threshold` 모드에서 탐지로 판단할 RSS 임계값(dBm) |
 | `DETECTION_COOLDOWN_SEC` | `60` | 같은 드론에 대해 탐지를 다시 트리거하기까지 최소 대기 시간(초) |
+| `SERIAL_RECONNECT_DELAY_SEC` | `3` | 시리얼 연결이 끊겼을 때 재연결까지 대기 시간(초) |
 
 ## 참고
 

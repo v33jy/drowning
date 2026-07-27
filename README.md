@@ -71,12 +71,14 @@ DRONE_SERVER_URL=http://localhost:8001 python3 -u scenario.py
 cd pi/gateway
 pip install -r requirements.txt
 
-# 하드웨어 없이 먼저 파이프라인만 확인
-INPUT_MODE=mock SERVER_URL=http://localhost:8001 python3 main.py
+# 하드웨어 없이 먼저 파이프라인만 확인 — 강남역→신논현역 접근 시나리오를 재현해서
+# RSS가 세지다가 rss_threshold 탐지가 실제로 트리거되는 것까지 볼 수 있음
+INPUT_MODE=mock DETECTION_MODE=rss_threshold SERVER_URL=http://localhost:8001 python3 main.py
 ```
 
 실제 UART 장치를 붙일 땐 `INPUT_MODE=serial`로, 패킷 포맷이 맞는지 먼저 확인하고 싶으면
-`INPUT_MODE=raw_debug`로 실행하면 됩니다. 자세한 환경변수는 `pi/gateway/README.md` 참고.
+`INPUT_MODE=raw_debug`로 실행하면 됩니다. 시리얼 연결이 끊겨도 자동으로 재연결을 시도합니다.
+자세한 환경변수는 `pi/gateway/README.md` 참고.
 
 카메라 영상을 같이 스트리밍하려면 라즈베리파이에서 별도 터미널로:
 
@@ -84,6 +86,9 @@ INPUT_MODE=mock SERVER_URL=http://localhost:8001 python3 main.py
 cd pi
 pip install picamera2 opencv-python-headless websockets
 python3 camera_stream.py --drone-id 1 --fps 12
+
+# 카메라/라즈베리파이 없이 나머지 파이프라인만 확인하려면
+python3 camera_stream.py --mock --drone-id 1
 ```
 
 ## 참고
