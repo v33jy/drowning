@@ -27,19 +27,19 @@ def parse_packet(raw_packet: str) -> dict[str, Any]:
     cleaned_packet = raw_packet.strip()
 
     if not cleaned_packet:
-        raise PacketParseError("빈 패킷입니다.")
+        raise PacketParseError("Empty packet.")
 
     parts = cleaned_packet.split(",")
 
     if len(parts) != 5:
         raise PacketParseError(
-            f"패킷 항목은 5개여야 합니다. 현재 항목 수: {len(parts)}"
+            f"Packet must have 5 fields, got {len(parts)}."
         )
 
     drone_id = parts[0].strip()
 
     if not drone_id:
-        raise PacketParseError("드론 ID가 비어 있습니다.")
+        raise PacketParseError("Drone ID is empty.")
 
     try:
         rssi = int(parts[1])
@@ -49,27 +49,27 @@ def parse_packet(raw_packet: str) -> dict[str, Any]:
 
     except ValueError as error:
         raise PacketParseError(
-            "RSSI, 위도, 경도, 배터리는 숫자여야 합니다."
+            "RSSI, latitude, longitude, and battery must be numeric."
         ) from error
 
     if not -90 <= latitude <= 90:
         raise PacketParseError(
-            f"위도 범위를 벗어났습니다: {latitude}"
+            f"Latitude out of range: {latitude}"
         )
 
     if not -180 <= longitude <= 180:
         raise PacketParseError(
-            f"경도 범위를 벗어났습니다: {longitude}"
+            f"Longitude out of range: {longitude}"
         )
 
     if not 0 <= battery <= 100:
         raise PacketParseError(
-            f"배터리는 0~100 사이여야 합니다: {battery}"
+            f"Battery must be between 0 and 100: {battery}"
         )
 
     if not -150 <= rssi <= 0:
         raise PacketParseError(
-            f"RSSI 값이 비정상적입니다: {rssi}"
+            f"RSSI value out of range: {rssi}"
         )
 
     return {

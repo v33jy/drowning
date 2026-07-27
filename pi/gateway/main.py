@@ -59,15 +59,14 @@ def _read_serial_lines() -> Iterator[str]:
 
     except ImportError as error:
         raise RuntimeError(
-            "pyserial이 설치되지 않았습니다. "
-            "'pip install pyserial'을 실행하세요."
+            "pyserial is not installed. Run 'pip install pyserial'."
         ) from error
 
     while True:
         try:
             print(
-                f"[UART 연결 시도] 포트={settings.serial_port}, "
-                f"속도={settings.baud_rate}"
+                f"[UART connecting] port={settings.serial_port}, "
+                f"baud={settings.baud_rate}"
             )
 
             with serial.Serial(
@@ -75,7 +74,7 @@ def _read_serial_lines() -> Iterator[str]:
                 baudrate=settings.baud_rate,
                 timeout=1
             ) as serial_connection:
-                print("[UART 연결됨]")
+                print("[UART connected]")
 
                 while True:
                     raw_data = serial_connection.readline()
@@ -90,7 +89,7 @@ def _read_serial_lines() -> Iterator[str]:
                         ).strip()
 
                     except UnicodeDecodeError:
-                        print("[수신 오류] UTF-8로 해석할 수 없는 데이터입니다.")
+                        print("[decode error] data is not valid UTF-8.")
                         continue
 
                     if decoded_data:
@@ -101,8 +100,8 @@ def _read_serial_lines() -> Iterator[str]:
 
         except serial.SerialException as error:
             print(
-                f"[UART 연결 끊김] {error} — "
-                f"{settings.serial_reconnect_delay_sec}초 후 재연결 시도"
+                f"[UART disconnected] {error} — "
+                f"retrying in {settings.serial_reconnect_delay_sec}s"
             )
             time.sleep(settings.serial_reconnect_delay_sec)
 
@@ -116,9 +115,9 @@ def run_raw_debug() -> None:
     """Print raw serial lines without parsing or sending — lets you check
     whether real hardware matches the format packet_parser.py assumes
     (5-field CSV) before wiring up the rest."""
-    print("[디버그 모드] 원본 패킷만 출력하고 서버 전송은 하지 않습니다.")
+    print("[debug mode] printing raw packets only, not sending to server.")
     for raw_data in _read_serial_lines():
-        print(f"[원본] {raw_data!r}")
+        print(f"[raw] {raw_data!r}")
 
 
 def get_packet_source() -> Iterator[str]:
@@ -127,15 +126,15 @@ def get_packet_source() -> Iterator[str]:
     mode = settings.input_mode.lower()
 
     if mode == "mock":
-        print("[입력 모드] Mock 테스트 데이터")
+        print("[input mode] mock test data")
         return generate_mock_packets()
 
     if mode == "serial":
-        print("[입력 모드] UART 시리얼 데이터")
+        print("[input mode] UART serial data")
         return read_serial_packets()
 
     raise ValueError(
-        f"지원하지 않는 INPUT_MODE입니다: {settings.input_mode}"
+        f"Unsupported INPUT_MODE: {settings.input_mode}"
     )
 
 
@@ -156,12 +155,12 @@ def _try_send_detection(client: GatewayClient, drone_id: int, cell_id: Optional[
     would reject it with 422 anyway, so don't waste retries on it."""
     if cell_id is None:
         print(
-            f"[탐지 보류] drone={drone_id} rss={rss_dbm}dBm — "
-            "그리드 범위 밖이라 cell_id 없음, /detection 전송 생략"
+            f"[detection skipped] drone={drone_id} rss={rss_dbm}dBm — "
+            "outside grid, no cell_id, skipping /detection"
         )
         return
 
-    print(f"[탐지] drone={drone_id} rss={rss_dbm}dBm cell={cell_id}")
+    print(f"[detected] drone={drone_id} rss={rss_dbm}dBm cell={cell_id}")
     client.send_detection(drone_id, cell_id, rss_dbm)
 
 
@@ -190,7 +189,7 @@ class RssThresholdDetector:
 
 def main() -> None:
     print("=" * 50)
-    print("Raspberry Pi Drone Gateway 시작")
+    print("Raspberry Pi Drone Gateway starting")
     print("=" * 50)
 
     print(f"Gateway ID     : {settings.gateway_id}")
@@ -204,9 +203,9 @@ def main() -> None:
         try:
             run_raw_debug()
         except KeyboardInterrupt:
-            print("\n[종료] 사용자가 프로그램을 종료했습니다.")
+            print("\n[stopped] interrupted by user.")
         except Exception as error:
-            print(f"\n[치명적 오류] {error}")
+            print(f"\n[fatal error] {error}")
         return
 
     client = GatewayClient(
@@ -226,16 +225,16 @@ def main() -> None:
         packet_source = get_packet_source()
 
         for raw_packet in packet_source:
-            print(f"\n[원본 패킷] {raw_packet}")
+            print(f"\n[raw packet] {raw_packet}")
 
             try:
                 telemetry = parse_packet(raw_packet)
 
             except PacketParseError as error:
-                print(f"[패킷 오류] {error}")
+                print(f"[packet error] {error}")
                 continue
 
-            print(f"[변환 완료] {telemetry}")
+            print(f"[parsed] {telemetry}")
 
             response = client.send_telemetry(telemetry)
             if response is None:
@@ -257,14 +256,14 @@ def main() -> None:
                     _try_send_detection(client, fpga_drone_id, cell_id, fpga_rss)
 
     except KeyboardInterrupt:
-        print("\n[종료] 사용자가 프로그램을 종료했습니다.")
+        print("\n[stopped] interrupted by user.")
 
     except Exception as error:
-        print(f"\n[치명적 오류] {error}")
+        print(f"\n[fatal error] {error}")
 
     finally:
         client.close()
-        print("[종료] Gateway 연결을 정리했습니다.")
+        print("[stopped] gateway connections closed.")
 
 
 if __name__ == "__main__":

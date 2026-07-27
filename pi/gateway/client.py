@@ -52,8 +52,8 @@ class GatewayClient:
             }
 
         except (KeyError, TypeError, ValueError) as error:
-            print(f"[데이터 오류] 잘못된 텔레메트리 형식: {error}")
-            print(f"[수신 데이터] {telemetry}")
+            print(f"[data error] invalid telemetry format: {error}")
+            print(f"[received] {telemetry}")
             return None
 
         return self._post_with_retry(f"/drones/{drone_id}/telemetry", payload)
@@ -85,7 +85,7 @@ class GatewayClient:
         url = f"{self.server_url}{path}"
 
         if self.dry_run:
-            print("[DRY RUN] 서버 전송 생략")
+            print("[DRY RUN] skipping server send")
             print(f"[GATEWAY] {self.gateway_id}")
             print(f"[URL] {url}")
             print(f"[PAYLOAD] {payload}")
@@ -96,22 +96,22 @@ class GatewayClient:
                 response = self.session.post(url, json=payload, timeout=self.timeout)
                 response.raise_for_status()
 
-                print(f"[전송 성공] {url}  상태 코드: {response.status_code}")
+                print(f"[sent] {url}  status: {response.status_code}")
                 try:
                     return response.json()
                 except ValueError:
                     return {}
 
             except requests.RequestException as error:
-                print(f"[전송 실패] {url}  {attempt}/{self.max_retries}회: {error}")
+                print(f"[send failed] {url}  {attempt}/{self.max_retries}: {error}")
 
                 if hasattr(error, "response") and error.response is not None:
-                    print(f"[서버 응답] {error.response.text}")
+                    print(f"[server response] {error.response.text}")
 
                 if attempt < self.max_retries:
                     wait_seconds = 2 ** (attempt - 1)
-                    print(f"[재시도 대기] {wait_seconds}초")
+                    print(f"[retry wait] {wait_seconds}s")
                     time.sleep(wait_seconds)
 
-        print(f"[전송 포기] {url} 최대 재시도 횟수를 초과했습니다.")
+        print(f"[gave up] {url} exceeded max retries.")
         return None

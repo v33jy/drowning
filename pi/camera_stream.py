@@ -84,7 +84,7 @@ def _init_real_camera(width: int, height: int, sharpness: float, exposure_time: 
         except KeyboardInterrupt:
             raise
         except Exception as exc:
-            print(f"[카메라 초기화 실패] {exc} — 3초 후 재시도", flush=True)
+            print(f"[camera init failed] {exc} — retrying in 3s", flush=True)
             time.sleep(3)
 
 
@@ -121,10 +121,10 @@ def run(
 ) -> None:
     if mock:
         cam = MockCamera(width, height, fps)
-        print(f"[MOCK 모드] 합성 프레임 사용 ({width}x{height} @ {fps}fps)", flush=True)
+        print(f"[mock mode] using synthetic frames ({width}x{height} @ {fps}fps)", flush=True)
     else:
         cam = _init_real_camera(width, height, sharpness, exposure_time)
-        print(f"카메라 시작 ({width}x{height} @ {fps}fps, sharpness={sharpness}, exposure_time={exposure_time})", flush=True)
+        print(f"camera started ({width}x{height} @ {fps}fps, sharpness={sharpness}, exposure_time={exposure_time})", flush=True)
 
     url = f"{WS_URL}/drones/{drone_id}/video"
     interval = 1 / fps
@@ -132,9 +132,9 @@ def run(
     try:
         while True:
             try:
-                print(f"서버 연결 중 : {url}", flush=True)
+                print(f"connecting to server: {url}", flush=True)
                 with connect(url) as ws:
-                    print("연결됨 — 스트리밍 시작", flush=True)
+                    print("connected — streaming started", flush=True)
                     while True:
                         t0 = time.monotonic()
                         frame = cam.capture_array()
@@ -148,13 +148,13 @@ def run(
             except KeyboardInterrupt:
                 raise
             except Exception as exc:
-                print(f"연결 끊김 ({exc}) — 1초 후 재연결", flush=True)
+                print(f"disconnected ({exc}) — reconnecting in 1s", flush=True)
                 time.sleep(1)
     except KeyboardInterrupt:
         pass
     finally:
         cam.stop()
-        print("\n스트리밍 종료.", flush=True)
+        print("\nstreaming stopped.", flush=True)
 
 
 if __name__ == "__main__":
@@ -163,11 +163,11 @@ if __name__ == "__main__":
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=720)
     parser.add_argument("--fps", type=int, default=12)
-    parser.add_argument("--quality", type=int, default=70, help="JPEG 품질 (1-100)")
-    parser.add_argument("--sharpness", type=float, default=1.0, help="libcamera Sharpness 컨트롤 (기본값 1.0 = 카메라 기본)")
-    parser.add_argument("--exposure-time", type=int, default=None, help="수동 노출 시간(마이크로초). 안 주면 자동노출 유지 — 실제 조도 보고 튜닝 필요")
-    parser.add_argument("--unsharp", type=float, default=0.0, help="후처리 언샤프 마스크 강도 (0=끔)")
-    parser.add_argument("--mock", action="store_true", help="picamera2/실제 카메라 없이 합성 프레임으로 나머지 파이프라인만 검증")
+    parser.add_argument("--quality", type=int, default=70, help="JPEG quality (1-100)")
+    parser.add_argument("--sharpness", type=float, default=1.0, help="libcamera Sharpness control (default 1.0 = camera default)")
+    parser.add_argument("--exposure-time", type=int, default=None, help="Manual exposure time in microseconds. Leaves auto-exposure on if unset — tune once real lighting is known.")
+    parser.add_argument("--unsharp", type=float, default=0.0, help="Post-process unsharp mask strength (0 = off)")
+    parser.add_argument("--mock", action="store_true", help="Use synthetic frames instead of picamera2/a real camera, to verify the rest of the pipeline")
     args = parser.parse_args()
     run(
         args.drone_id, args.width, args.height, args.fps, args.quality,
