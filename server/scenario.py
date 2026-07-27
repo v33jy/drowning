@@ -34,10 +34,6 @@ VIDEO_WIDTH, VIDEO_HEIGHT = 160, 120
 VIDEO_COLORS = [(220, 40, 40), (40, 180, 80), (40, 100, 220), (230, 200, 40)]
 VIDEO_FPS = 10
 
-# 격자 범위 (서버 config와 동일하게 맞춤)
-GRID_LAT_MIN, GRID_LAT_MAX = 37.490, 37.515
-GRID_LNG_MIN, GRID_LNG_MAX = 127.020, 127.040
-
 # 강남역 (출발)
 START_LAT = 37.4979
 START_LNG = 127.0276
@@ -66,7 +62,7 @@ async def run() -> None:
         print()
 
         # ── Phase 1: 강남역에서 출발 ──────────────────────────────────────
-        await _telemetry(client, START_LAT, START_LNG, 100)
+        cell_id = await _telemetry(client, START_LAT, START_LNG, 100)
         await _signal(client, -40.0)
         print("[출발] 강남역 — 드론 이륙")
         await asyncio.sleep(1)
@@ -82,7 +78,7 @@ async def run() -> None:
             dist    = math.hypot(lat - TARGET_LAT, lng - TARGET_LNG)
             rss_dbm = max(-100.0, min(-40.0, -40.0 - dist * 3000))
 
-            await _telemetry(client, lat, lng, bat)
+            cell_id = await _telemetry(client, lat, lng, bat)
             await _signal(client, rss_dbm)
 
             bar = "█" * int(t * 25) + "░" * (25 - int(t * 25))
@@ -92,7 +88,7 @@ async def run() -> None:
         # ── Phase 3: 탐지 이벤트 ─────────────────────────────────────────
         print()
         _banner("요구조자 탐지 — 신논현역 6번 출구")
-        resp = await _detection(client)
+        resp = await _detection(client, cell_id)
         voip_id = resp["voip_session_id"]
         print(f"VoIP 세션 ID : {voip_id}")
         print()
@@ -168,14 +164,15 @@ def _png_bytes(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
     return sig + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
 
 
-async def _telemetry(client: httpx.AsyncClient, lat: float, lng: float, bat: float) -> None:
-    await client.post(f"/drones/{DRONE_ID}/telemetry", json={
+async def _telemetry(client: httpx.AsyncClient, lat: float, lng: float, bat: float) -> str | None:
+    r = await client.post(f"/drones/{DRONE_ID}/telemetry", json={
         "lat":      round(lat, 6),
         "lng":      round(lng, 6),
         "altitude": ALTITUDE,
         "battery":  int(bat),
         "status":   "active",
     })
+    return r.json().get("cell_id")
 
 
 async def _signal(client: httpx.AsyncClient, rss_dbm: float) -> None:
@@ -184,10 +181,7 @@ async def _signal(client: httpx.AsyncClient, rss_dbm: float) -> None:
     })
 
 
-async def _detection(client: httpx.AsyncClient) -> dict:
-    row     = int((TARGET_LAT - GRID_LAT_MIN) / (GRID_LAT_MAX - GRID_LAT_MIN) * 10)
-    col     = int((TARGET_LNG - GRID_LNG_MIN) / (GRID_LNG_MAX - GRID_LNG_MIN) * 10)
-    cell_id = f"{chr(65 + min(row, 9))}{min(col, 9)}"
+async def _detection(client: httpx.AsyncClient, cell_id: str | None) -> dict:
     r = await client.post("/detection", json={
         "drone_id":   DRONE_ID,
         "cell_id":    cell_id,
