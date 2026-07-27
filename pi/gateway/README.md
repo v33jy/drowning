@@ -54,6 +54,15 @@ INPUT_MODE=raw_debug SERIAL_PORT=/dev/ttyUSB0 python3 main.py
 | `DETECTION_COOLDOWN_SEC` | `60` | 같은 드론에 대해 탐지를 다시 트리거하기까지 최소 대기 시간(초) |
 | `SERIAL_RECONNECT_DELAY_SEC` | `3` | 시리얼 연결이 끊겼을 때 재연결까지 대기 시간(초) |
 
+## 테스트
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+`packet_parser.py`의 파싱/검증 로직과 `client.py`의 재시도/dry-run 로직을 다룹니다
+(네트워크·서버 없이 동작).
+
 ## 참고
 
 - `DETECTION_MODE=fpga`가 최종 설계(FPGA가 신호를 식별해 인터럽트를 주면 그걸 그대로 전달)지만,
