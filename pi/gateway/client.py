@@ -5,12 +5,12 @@ import requests
 
 
 def extract_drone_id(raw_drone_id: str) -> int:
-    """"drone-01" 형태의 문자열에서 정수 드론 ID를 뽑는다."""
+    """Extract the integer drone ID from a "drone-01" style string."""
     return int(raw_drone_id.replace("drone-", ""))
 
 
 class GatewayClient:
-    """서버의 telemetry/signal/detection 세 엔드포인트를 재시도 포함해서 호출한다."""
+    """Calls the server's telemetry/signal/detection endpoints, with retry."""
 
     def __init__(
         self,
@@ -30,10 +30,10 @@ class GatewayClient:
 
     def send_telemetry(self, telemetry: dict[str, Any]) -> Optional[dict]:
         """
-        텔레메트리 데이터를 서버로 전송한다.
+        Send telemetry to the server.
 
-        성공하면 서버 응답(entry, cell_id 포함)을 그대로 돌려준다 — 호출자가
-        이걸로 탐지 이벤트에 필요한 cell_id를 별도 조회 없이 바로 쓸 수 있다.
+        On success, returns the server response as-is (includes cell_id) so
+        the caller can use it for a detection event without a separate lookup.
         """
 
         try:
@@ -59,12 +59,12 @@ class GatewayClient:
         return self._post_with_retry(f"/drones/{drone_id}/telemetry", payload)
 
     def send_signal(self, drone_id: int, rss_dbm: float) -> bool:
-        """RSS 신호 세기를 서버로 전송한다."""
+        """Send an RSS reading to the server."""
         result = self._post_with_retry(f"/drones/{drone_id}/signal", {"rss_dbm": rss_dbm})
         return result is not None
 
     def send_detection(self, drone_id: int, cell_id: Optional[str], rss_dbm: float) -> Optional[dict]:
-        """탐지 이벤트를 서버로 전송한다 (VoIP 세션이 열림)."""
+        """Send a detection event to the server (opens a VoIP session)."""
         payload = {
             "drone_id": drone_id,
             "cell_id": cell_id,
@@ -74,14 +74,14 @@ class GatewayClient:
         return self._post_with_retry("/detection", payload)
 
     def close(self) -> None:
-        """HTTP 연결을 정리한다."""
+        """Close the HTTP session."""
         self.session.close()
 
     # -- Private --
 
     def _post_with_retry(self, path: str, payload: dict) -> Optional[dict]:
-        """재시도/백오프 포함 공통 POST 헬퍼. 성공 시 응답 JSON(dict, 없으면 {})을
-        반환하고, 재시도를 다 써도 실패하면 None을 반환한다."""
+        """Shared POST helper with retry/backoff. Returns the response JSON
+        (dict, {} if empty) on success, or None once retries are exhausted."""
         url = f"{self.server_url}{path}"
 
         if self.dry_run:

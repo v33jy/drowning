@@ -1,9 +1,10 @@
 """
-드론 UART 패킷 파서.
+Drone UART packet parser.
 
-패킷 포맷은 실제 HW(비행 컨트롤러/RSSI 센서 보드)와 확정된 스펙이 아니라
-잠정 가정임 — 실기기 연결 후 INPUT_MODE=raw_debug로 원본 패킷을 먼저 확인하고,
-다르면 이 파일의 필드 개수/순서만 고치면 됨.
+The packet format is a provisional assumption, not a spec confirmed with the
+real HW (flight controller / RSSI board) — after connecting real hardware,
+check raw packets with INPUT_MODE=raw_debug first, then adjust the field
+count/order here if it differs.
 """
 
 from datetime import datetime, timezone
@@ -11,15 +12,15 @@ from typing import Any
 
 
 class PacketParseError(ValueError):
-    """패킷 형식이 잘못됐을 때 발생하는 오류."""
+    """Raised when the packet format is invalid."""
     pass
 
 
 def parse_packet(raw_packet: str) -> dict[str, Any]:
     """
-    CSV 형식의 드론 패킷을 딕셔너리로 변환한다.
+    Convert a CSV drone packet into a dict.
 
-    패킷 예시:
+    Example packet:
     drone-01,-65,37.5012,127.0324,87
     """
 

@@ -20,8 +20,8 @@ async def update_telemetry(
     telemetry: DroneTelemetry,
     drone_id: int = Path(..., ge=1),
 ) -> dict:
-    # entry에 cell_id가 포함돼 있어 그대로 돌려줌 — 게이트웨이가 그리드 계산을
-    # 따로 하지 않고 이 응답만으로 탐지 이벤트에 필요한 cell_id를 알 수 있음.
+    # entry already includes cell_id, so return it as-is — lets the gateway
+    # get cell_id for detection events without duplicating the grid math.
     return await services.submit_telemetry(drone_id, telemetry)
 
 
