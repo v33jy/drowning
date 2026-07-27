@@ -1,3 +1,4 @@
+import math
 import random
 import time
 from collections.abc import Iterator
@@ -7,38 +8,52 @@ from client import GatewayClient, extract_drone_id
 from config import settings
 from packet_parser import PacketParseError, parse_packet
 
+# Gangnam Station -> Sinnonhyeon Station exit 6 — same coordinates/RSS
+# formula as scenario.py, for a consistent demo scenario.
+_START_LAT, _START_LNG = 37.4979, 127.0276
+_TARGET_LAT, _TARGET_LNG = 37.5044, 127.0248
+_APPROACH_STEPS = 30
+
+
+def _build_packet(latitude: float, longitude: float, rssi: int, battery: int) -> str:
+    return (
+        f"drone-01,"
+        f"{rssi},"
+        f"{latitude:.6f},"
+        f"{longitude:.6f},"
+        f"{battery}"
+    )
+
 
 def generate_mock_packets() -> Iterator[str]:
-    """
-    실제 드론이 없어도 테스트할 수 있도록
-    가짜 패킷을 계속 생성한다.
-    """
+    """Replay the same Gangnam -> Sinnonhyeon approach as scenario.py so it
+    works without real hardware. RSS strengthens on approach, which lets
+    DETECTION_MODE=rss_threshold actually fire; hovers in place after arrival."""
 
-    base_latitude = 37.5012
-    base_longitude = 127.0324
-    battery = 100
+    battery = 100.0
+
+    for step in range(1, _APPROACH_STEPS + 1):
+        t = step / _APPROACH_STEPS
+        latitude = _START_LAT + (_TARGET_LAT - _START_LAT) * t
+        longitude = _START_LNG + (_TARGET_LNG - _START_LNG) * t
+        battery = max(10.0, battery - 0.25)
+
+        dist = math.hypot(latitude - _TARGET_LAT, longitude - _TARGET_LNG)
+        rssi = int(max(-100.0, min(-40.0, -40.0 - dist * 3000)))
+
+        yield _build_packet(latitude, longitude, rssi, int(battery))
+        time.sleep(settings.send_interval)
 
     while True:
-        latitude = base_latitude + random.uniform(-0.001, 0.001)
-        longitude = base_longitude + random.uniform(-0.001, 0.001)
-        rssi = random.randint(-90, -40)
-
-        battery = max(0, battery - random.randint(0, 1))
-
-        packet = (
-            f"drone-01,"
-            f"{rssi},"
-            f"{latitude:.6f},"
-            f"{longitude:.6f},"
-            f"{battery}"
-        )
-
-        yield packet
-
+        battery = max(10.0, battery - 0.05)
+        rssi = -40 + random.randint(-3, 0)
+        yield _build_packet(_TARGET_LAT, _TARGET_LNG, rssi, int(battery))
         time.sleep(settings.send_interval)
 
 
 def _read_serial_lines() -> Iterator[str]:
+    """Read UART lines. If the connection drops (drone vibration, loose
+    cable), keep retrying instead of killing the process."""
     try:
         import serial
 
@@ -48,55 +63,66 @@ def _read_serial_lines() -> Iterator[str]:
             "'pip install pyserial'을 실행하세요."
         ) from error
 
-    print(
-        f"[UART 연결] 포트={settings.serial_port}, "
-        f"속도={settings.baud_rate}"
-    )
+    while True:
+        try:
+            print(
+                f"[UART 연결 시도] 포트={settings.serial_port}, "
+                f"속도={settings.baud_rate}"
+            )
 
-    with serial.Serial(
-        port=settings.serial_port,
-        baudrate=settings.baud_rate,
-        timeout=1
-    ) as serial_connection:
+            with serial.Serial(
+                port=settings.serial_port,
+                baudrate=settings.baud_rate,
+                timeout=1
+            ) as serial_connection:
+                print("[UART 연결됨]")
 
-        while True:
-            raw_data = serial_connection.readline()
+                while True:
+                    raw_data = serial_connection.readline()
 
-            if not raw_data:
-                continue
+                    if not raw_data:
+                        continue
 
-            try:
-                decoded_data = raw_data.decode(
-                    "utf-8",
-                    errors="strict"
-                ).strip()
+                    try:
+                        decoded_data = raw_data.decode(
+                            "utf-8",
+                            errors="strict"
+                        ).strip()
 
-            except UnicodeDecodeError:
-                print("[수신 오류] UTF-8로 해석할 수 없는 데이터입니다.")
-                continue
+                    except UnicodeDecodeError:
+                        print("[수신 오류] UTF-8로 해석할 수 없는 데이터입니다.")
+                        continue
 
-            if decoded_data:
-                yield decoded_data
+                    if decoded_data:
+                        yield decoded_data
+
+        except KeyboardInterrupt:
+            raise
+
+        except serial.SerialException as error:
+            print(
+                f"[UART 연결 끊김] {error} — "
+                f"{settings.serial_reconnect_delay_sec}초 후 재연결 시도"
+            )
+            time.sleep(settings.serial_reconnect_delay_sec)
 
 
 def read_serial_packets() -> Iterator[str]:
-    """라즈베리파이의 USB UART 또는 시리얼 포트에서 한 줄씩 패킷을 읽는다."""
+    """Read one packet per line from the Raspberry Pi's USB UART/serial port."""
     return _read_serial_lines()
 
 
 def run_raw_debug() -> None:
-    """파싱/전송 없이 시리얼로 들어오는 원본 줄을 그대로 출력한다.
-
-    실제 하드웨어를 연결했을 때 packet_parser.py가 가정하는 포맷(5필드 CSV)이
-    실제로 오는 데이터와 맞는지 눈으로 먼저 확인하는 용도.
-    """
+    """Print raw serial lines without parsing or sending — lets you check
+    whether real hardware matches the format packet_parser.py assumes
+    (5-field CSV) before wiring up the rest."""
     print("[디버그 모드] 원본 패킷만 출력하고 서버 전송은 하지 않습니다.")
     for raw_data in _read_serial_lines():
         print(f"[원본] {raw_data!r}")
 
 
 def get_packet_source() -> Iterator[str]:
-    """설정에 따라 mock 또는 UART 입력을 선택한다."""
+    """Pick mock or UART input based on settings."""
 
     mode = settings.input_mode.lower()
 
@@ -114,21 +140,35 @@ def get_packet_source() -> Iterator[str]:
 
 
 def check_fpga_detection() -> Optional[tuple[int, float]]:
-    """FPGA가 요구조자 신호를 식별하면 하드웨어 인터럽트를 준다는 게 원래
-    설계다 (server/routers/detection.py 참고). 실제 신호가 UART 특수 패킷으로
-    오는지 GPIO 인터럽트로 오는지 등은 아직 FPGA 쪽과 확정되지 않아서, 지금은
-    자리만 마련해둔 상태.
+    """The original design has the FPGA fire a hardware interrupt when it
+    identifies a survivor signal (see server/routers/detection.py). Whether
+    that arrives as a special UART packet, a GPIO interrupt, or something
+    else is not settled with the FPGA side yet, so this is just a placeholder.
 
-    FPGA 인터페이스가 정해지면 여기서 그 신호를 읽어
-    (drone_id, rss_dbm)을 반환하도록 채우면 된다.
+    Once the FPGA interface is defined, read that signal here and return
+    (drone_id, rss_dbm).
     """
     return None
 
 
-class RssThresholdDetector:
-    """RSS 임계값 기반 탐지 판단 — FPGA 준비 전까지 쓰는 폴백.
+def _try_send_detection(client: GatewayClient, drone_id: int, cell_id: Optional[str], rss_dbm: float) -> None:
+    """Skip sending if cell_id is missing (outside the grid) — the server
+    would reject it with 422 anyway, so don't waste retries on it."""
+    if cell_id is None:
+        print(
+            f"[탐지 보류] drone={drone_id} rss={rss_dbm}dBm — "
+            "그리드 범위 밖이라 cell_id 없음, /detection 전송 생략"
+        )
+        return
 
-    같은 드론에 대해 쿨다운 시간이 지나기 전까지는 다시 트리거하지 않는다.
+    print(f"[탐지] drone={drone_id} rss={rss_dbm}dBm cell={cell_id}")
+    client.send_detection(drone_id, cell_id, rss_dbm)
+
+
+class RssThresholdDetector:
+    """RSS-threshold detection — a fallback until the FPGA path is ready.
+
+    Won't re-trigger for the same drone until the cooldown elapses.
     """
 
     def __init__(self, threshold: float, cooldown_sec: float) -> None:
@@ -209,13 +249,12 @@ def main() -> None:
 
             if settings.detection_mode.lower() == "rss_threshold":
                 if rss_detector.check(drone_id, rssi):
-                    print(f"[탐지] RSS 임계값 초과 — drone={drone_id} rss={rssi}dBm cell={cell_id}")
-                    client.send_detection(drone_id, cell_id, rssi)
+                    _try_send_detection(client, drone_id, cell_id, rssi)
             else:
                 detected = check_fpga_detection()
                 if detected is not None:
                     fpga_drone_id, fpga_rss = detected
-                    client.send_detection(fpga_drone_id, cell_id, fpga_rss)
+                    _try_send_detection(client, fpga_drone_id, cell_id, fpga_rss)
 
     except KeyboardInterrupt:
         print("\n[종료] 사용자가 프로그램을 종료했습니다.")
