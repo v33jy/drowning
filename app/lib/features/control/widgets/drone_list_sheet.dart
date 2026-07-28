@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +6,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/severity.dart';
 import '../../../core/widgets/status_chip.dart';
+import '../../../core/widgets/video_thumbnail.dart';
 import '../../../models/drone_state.dart';
 import '../providers/drones_provider.dart';
 import '../providers/heatmap_provider.dart';
@@ -215,34 +214,8 @@ class _InlineDroneDetail extends ConsumerWidget {
         ),
         _DroneKeyValueTable(row: row),
         const SizedBox(height: AppSpacing.sm),
-        _VideoThumbnail(frameB64: frameB64),
+        VideoThumbnail(frameB64: frameB64),
       ],
-    );
-  }
-}
-
-/// Rough live-glance preview — last received frame only, no buffering or
-/// real player. Just enough to show "this is roughly what the drone sees".
-/// Full-width, below the stat table — a side thumbnail read as an
-/// afterthought; this is meant to be the second thing you look at.
-class _VideoThumbnail extends StatelessWidget {
-  const _VideoThumbnail({required this.frameB64});
-  final String? frameB64;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppRadius.sm),
-      child: Container(
-        width: double.infinity,
-        height: 160,
-        color: AppColors.surfaceSunken,
-        child: frameB64 == null
-            ? const Center(
-                child: Icon(Icons.videocam_off_outlined, size: 28, color: AppColors.textSecondary),
-              )
-            : Image.memory(base64Decode(frameB64!), fit: BoxFit.contain, gaplessPlayback: true),
-      ),
     );
   }
 }

@@ -14,7 +14,6 @@ dependencies:
   web_socket_channel: ^3.0.1   # WebSocket to FastAPI server
   flutter_riverpod: ^2.6.1     # State management
   http: ^1.2.1                 # Initial HTTP calls (grid definition)
-  shared_preferences: ^2.3.3   # Persist editable server host/port (Settings)
 
 dev_dependencies:
   flutter_test:

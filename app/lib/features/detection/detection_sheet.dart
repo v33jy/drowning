@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
+import '../../core/widgets/video_thumbnail.dart';
 import '../../models/detection_event.dart';
+import '../control/providers/video_frame_provider.dart';
 import 'providers/detection_log_provider.dart';
 
 /// Result returned when the sheet closes, so [ControlScreen] knows whether
@@ -79,6 +81,7 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
   Widget build(BuildContext context) {
     final event = widget.event;
     final elapsed = _elapsedLabel(event.timestamp);
+    final frameB64 = ref.watch(videoFrameProvider.select((m) => m[event.droneId]));
 
     return SingleChildScrollView(
       child: Column(
@@ -125,25 +128,10 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
             style: Theme.of(context).textTheme.labelSmall,
           ),
           const SizedBox(height: AppSpacing.lg),
-          // 영상 프리뷰 — 표시 방식 미정. 자리만 확보.
           // 고정 높이 사용: 16:9 AspectRatio는 가로로 넓은 landscape 태블릿에서
           // 폭 기준으로 너무 큰 높이를 요구해 시트 예산(maxHeightFraction)을
           // 넘기고 버튼들을 스크롤 없인 안 보이는 위치로 밀어낸다.
-          Container(
-            width: double.infinity,
-            height: 140,
-            decoration: BoxDecoration(
-              color: AppColors.surfaceSunken,
-              borderRadius: BorderRadius.circular(AppSpacing.sm),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: const Center(
-              child: Text(
-                '영상 프리뷰 · 미정',
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-              ),
-            ),
-          ),
+          VideoThumbnail(frameB64: frameB64, height: 140),
           const SizedBox(height: AppSpacing.lg),
           SizedBox(
             width: double.infinity,

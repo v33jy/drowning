@@ -99,14 +99,30 @@ class AppTheme {
 
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.surface,
-        selectedColor: AppColors.primary.withValues(alpha: 0.1),
+        selectedColor: AppColors.navy.withValues(alpha: 0.1),
         labelStyle: const TextStyle(
             fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
         secondaryLabelStyle:
-            const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.primary),
+            const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.navy),
         side: const BorderSide(color: AppColors.border),
         shape: const StadiumBorder(),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      ),
+
+      // Material 3's default SegmentedButton derives its selected fill from
+      // an auto-generated tonal palette, not from [AppColors] — on this
+      // app's KRDS-derived scheme that came out as a bright, unrelated blue.
+      // Pinning it to navy keeps every "selected" state in the app on one
+      // deliberate accent instead of two different blues.
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: SegmentedButton.styleFrom(
+          backgroundColor: AppColors.surface,
+          foregroundColor: AppColors.textPrimary,
+          selectedBackgroundColor: AppColors.navy,
+          selectedForegroundColor: Colors.white,
+          side: const BorderSide(color: AppColors.border),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
+        ),
       ),
 
       cardTheme: CardThemeData(

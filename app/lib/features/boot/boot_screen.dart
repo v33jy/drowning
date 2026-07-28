@@ -10,7 +10,7 @@ import '../settings/providers/settings_provider.dart';
 
 enum _BootPhase { splash, connecting, failed, success }
 
-/// Entry flow — Splash → 권한 rationale(Dialog) → 서버 연결 → 실패 시 Retry.
+/// Entry flow — Splash → 서버 연결 → 실패 시 Retry.
 /// One route, branching on [_BootPhase], per the confirmed design (this
 /// replaces what used to be 4 separate conceptual screens).
 class BootScreen extends ConsumerStatefulWidget {
@@ -39,11 +39,6 @@ class _BootScreenState extends ConsumerState<BootScreen> {
 
   Future<void> _connectToServer() async {
     try {
-      // 이전에 설정 화면에서 저장한 서버 주소가 있으면 그걸 먼저 반영한다 —
-      // SharedPreferences 로드가 끝나기 전에 컴파일 타임 기본값으로 붙어버리는
-      // 경합을 막는다.
-      await ref.read(settingsProvider.notifier).ensureLoaded();
-      if (!mounted) return;
       final settings = ref.read(settingsProvider);
 
       await fetchAndApplyGrid(ref, settings.baseUrl);

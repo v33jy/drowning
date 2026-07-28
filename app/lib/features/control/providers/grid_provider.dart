@@ -9,8 +9,7 @@ import '../../../models/grid_cell.dart';
 /// 화면 changes the server address), then otherwise read-only.
 final gridDefProvider = StateProvider<Map<String, CellBounds>>((ref) => {});
 
-/// Shared by [BootScreen] and 설정 화면's reconnect action so the fetch +
-/// parse logic only exists once.
+/// Fetched once by [BootScreen] during connect.
 Future<void> fetchAndApplyGrid(WidgetRef ref, String baseUrl) async {
   final res = await http.get(Uri.parse('$baseUrl/heatmap/grid'));
   if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
