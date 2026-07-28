@@ -199,25 +199,56 @@ class _LogScreenState extends ConsumerState<LogScreen> {
               ),
             ),
           ),
-          const Divider(height: 1),
           Expanded(
-            child: filtered.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.inbox_outlined, size: 32, color: AppColors.textSecondary),
-                        const SizedBox(height: AppSpacing.sm),
-                        Text('기록 없음', style: Theme.of(context).textTheme.bodyMedium),
-                      ],
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.all(color: AppColors.border),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.sm),
+                      child: Row(
+                        children: [
+                          Text('탐지 · 알림', style: AppTypography.eyebrow(AppColors.navy)),
+                          const Spacer(),
+                          Text('총 ${filtered.length}건',
+                              style: AppTypography.eyebrow(AppColors.textSecondary)),
+                        ],
+                      ),
                     ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, i) => _LogTile(entry: filtered[i]),
-                  ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.inbox_outlined,
+                                      size: 32, color: AppColors.textSecondary),
+                                  const SizedBox(height: AppSpacing.sm),
+                                  Text('기록 없음', style: Theme.of(context).textTheme.bodyMedium),
+                                ],
+                              ),
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                              itemCount: filtered.length,
+                              separatorBuilder: (_, _) => const Divider(height: 1),
+                              itemBuilder: (context, i) => _LogTile(entry: filtered[i]),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),

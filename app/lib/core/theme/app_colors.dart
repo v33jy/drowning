@@ -24,11 +24,15 @@ class AppColors {
   static const Color textPrimary = Color(0xFF1E2124); // KRDS gray-90
   static const Color textSecondary = Color(0xFF6D7882); // KRDS gray-50
 
-  static const Color success = Color(0xFF228738); // KRDS success-50
-  static const Color warning = Color(0xFFF59E0B);
-  static const Color danger = Color(0xFFDE3412); // KRDS danger-50
+  // One step (or more) deeper than the raw KRDS "-50" tier — these carry a
+  // drone's status on the map marker itself (small icon, no tint behind it),
+  // where the lighter -50 tones read as washed out next to the rest of the
+  // navy-anchored palette instead of as a confident status color.
+  static const Color success = Color(0xFF285D33); // KRDS success-70
+  static const Color warning = Color(0xFFB45309); // deep amber — no KRDS "warning" token exists
+  static const Color danger = Color(0xFFBD2C0F); // KRDS danger-60
   static const Color info = primary;
-  static const Color offline = Color(0xFF8A949E); // KRDS gray-40
+  static const Color offline = Color(0xFF58616A); // KRDS gray-60
 }
 
 /// Semantic status colors that Material 3's [ColorScheme] has no native slot

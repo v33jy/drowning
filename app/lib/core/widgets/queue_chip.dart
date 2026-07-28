@@ -19,8 +19,8 @@ class QueueChip extends StatelessWidget {
     // Pending detections carry Severity.warning everywhere else in the app
     // (기록 screen, log icons) — filling this in AppColors.primary instead
     // read as an arbitrary brand-blue badge with no relation to that
-    // vocabulary. Amber + dark text (hazard-stripe convention) both matches
-    // and reads as an actual alert, not a notification pill.
+    // vocabulary. Amber + white (same "solid fill, white label" idiom as the
+    // navy menu button/selected chips) reads as an actual alert.
     return Material(
       color: AppColors.warning,
       borderRadius: BorderRadius.circular(999),
@@ -33,14 +33,14 @@ class QueueChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.priority_high, size: 14, color: AppColors.textPrimary),
+              const Icon(Icons.priority_high, size: 14, color: Colors.white),
               const SizedBox(width: AppSpacing.xs),
               Text(
                 '미확인 탐지 $count건',
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
+                  color: Colors.white,
                 ),
               ),
             ],
