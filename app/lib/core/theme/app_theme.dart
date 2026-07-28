@@ -46,14 +46,19 @@ class AppTheme {
         space: 1,
       ),
 
+      // Navy chrome (vs. the light body background) is the one deliberate
+      // "institutional" cue borrowed from mnd.go.kr — every pushed screen
+      // (기록/설정) reads as an official system, not a generic dashboard.
       appBarTheme: AppBarTheme(
-        backgroundColor: AppColors.background,
-        foregroundColor: AppColors.textPrimary,
+        backgroundColor: AppColors.navy,
+        foregroundColor: Colors.white,
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         centerTitle: false,
-        titleTextStyle: textTheme.titleLarge,
+        titleTextStyle: textTheme.titleLarge?.copyWith(color: Colors.white),
+        iconTheme: const IconThemeData(color: Colors.white),
+        actionsIconTheme: const IconThemeData(color: Colors.white),
       ),
 
       filledButtonTheme: FilledButtonThemeData(

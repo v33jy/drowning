@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
@@ -34,33 +33,8 @@ class _BootScreenState extends ConsumerState<BootScreen> {
   Future<void> _run() async {
     await Future.delayed(const Duration(milliseconds: 800)); // splash 최소 노출
     if (!mounted) return;
-    await _requestMicPermission();
-    if (!mounted) return;
     setState(() => _phase = _BootPhase.connecting);
     await _connectToServer();
-  }
-
-  Future<void> _requestMicPermission() async {
-    final proceed = await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => AlertDialog(
-            icon: const Icon(Icons.mic_none, color: AppColors.primary, size: 32),
-            title: const Text('마이크 권한이 필요해요'),
-            content: const Text('요구조자와 음성으로 통화하려면 마이크 권한이 필요합니다.'),
-            actions: [
-              FilledButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('확인'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    if (proceed) {
-      await Permission.microphone.request();
-    }
-    // 거부돼도 부팅은 계속 진행 — 통화 버튼 쪽에서 권한 거부 상태를 다룬다.
   }
 
   Future<void> _connectToServer() async {

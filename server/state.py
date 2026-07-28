@@ -13,7 +13,6 @@ import collections
 
 import config
 from heatmap import HeatmapState
-from voip.session import VoIPSession
 from ws_manager import ConnectionManager
 
 drone_states: dict[int, dict] = {}
@@ -21,8 +20,6 @@ drone_states: dict[int, dict] = {}
 heatmap = HeatmapState()
 
 detections: collections.deque[dict] = collections.deque(maxlen=config.MAX_DETECTIONS)
-
-voip_sessions: dict[str, VoIPSession] = {}
 
 manager = ConnectionManager()
 

@@ -9,8 +9,12 @@ class AppSettings {
   final String serverHost;
   final int httpPort;
 
-  String get baseUrl => 'http://$serverHost:$httpPort';
-  String get wsUrl => 'ws://$serverHost:$httpPort/ws/control';
+  // 443 포트는 Cloudflare Tunnel 같은 TLS 종단을 가리키는 관례로 취급 —
+  // 그 경우 포트를 URL에 안 붙이고 보안 스킴을 쓴다.
+  String get baseUrl => httpPort == 443 ? 'https://$serverHost' : 'http://$serverHost:$httpPort';
+  String get wsUrl => httpPort == 443
+      ? 'wss://$serverHost/ws/control'
+      : 'ws://$serverHost:$httpPort/ws/control';
 
   AppSettings copyWith({String? serverHost, int? httpPort}) => AppSettings(
         serverHost: serverHost ?? this.serverHost,

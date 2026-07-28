@@ -44,8 +44,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     super.dispose();
   }
 
-  // 통화 중이든 그냥 최소화한 상태든, 시트가 열려 있는 동안엔 새 탐지가 끼어들지
-  // 않는다 — 큐 칩 숫자만 늘어나고, 현재 시트가 끝나야 다음 걸 연다.
+  // 시트가 열려 있는 동안엔 새 탐지가 끼어들지 않는다 — 큐 칩 숫자만
+  // 늘어나고, 현재 시트가 끝나야 다음 걸 연다.
   Future<void> _openDetectionSheet(DetectionEvent event) async {
     setState(() => _detectionSheetOpen = true);
     final outcome = await showDetectionSheet(context, event);

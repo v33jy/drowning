@@ -4,7 +4,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 
 /// "미확인 탐지 N건" — shown on the control screen when a detection is
-/// queued behind an active call, or when a sheet has been minimized.
+/// queued behind an open sheet, or when a sheet has been minimized.
 /// Renders nothing when [count] is 0. Presentational only; the caller
 /// supplies the count from whichever detection-queue provider it watches.
 class QueueChip extends StatelessWidget {

@@ -6,7 +6,6 @@ Usage:
 
 환경변수:
     DRONE_SERVER_URL   서버 주소 (기본: http://localhost:8001)
-    VOIP_HOST          VoIP 서버 호스트 (기본: localhost)
 """
 
 from __future__ import annotations
@@ -14,20 +13,14 @@ from __future__ import annotations
 import asyncio
 import math
 import os
-import socket
 import struct
-import subprocess
-import uuid
 import zlib
-from pathlib import Path
 
 import httpx
 import websockets
 
 SERVER_URL = os.environ.get("DRONE_SERVER_URL", "http://localhost:8001")
 WS_URL     = SERVER_URL.replace("http://", "ws://").replace("https://", "wss://")
-VOIP_HOST  = os.environ.get("VOIP_HOST", "localhost")
-VOIP_PORT  = 5005
 
 # 영상 프레임 시뮬레이션 (단색 PNG, 카메라 하드웨어 없이 파이프라인 검증용)
 VIDEO_WIDTH, VIDEO_HEIGHT = 160, 120
@@ -45,11 +38,6 @@ TARGET_LNG = 127.0248
 DRONE_ID   = int(os.environ.get("DRONE_ID", "1"))
 STEPS      = 30          # 이동 단계 수 (~30초)
 ALTITUDE   = 50.0
-
-TTS_SCRIPT = "살려주세요. 신논현역 6번 출구입니다. 빨리 와주세요."
-
-SAMPLE_RATE = 16000
-FRAME_BYTES = 640        # 20 ms × 16 kHz × 2 byte = 640 bytes/frame
 
 
 # ---------------------------------------------------------------------------
@@ -89,31 +77,18 @@ async def run() -> None:
         print()
         _banner("요구조자 탐지 — 신논현역 6번 출구")
         resp = await _detection(client, cell_id)
-        voip_id = resp["voip_session_id"]
-        print(f"VoIP 세션 ID : {voip_id}")
+        detection_id = resp["detection_id"]
+        print(f"탐지 ID : {detection_id}")
         print()
 
         # 탐지 직후에도 드론은 현장 호버링
         await _telemetry(client, TARGET_LAT, TARGET_LNG, 100 - STEPS * 0.25)
 
-        # ── Phase 4: receiver 자동 기동 + TTS 준비 ───────────────────────
-        pcm_data = _generate_tts(TTS_SCRIPT)   # 미리 생성 (1~2초 소요)
-
         # 탐지 시점부터 영상은 별도 WebSocket 연결로 계속 스트리밍 (텔레메트리 주기와 무관)
         video_task = asyncio.create_task(_stream_video())
 
-        receiver = _start_receiver(voip_id)     # Python receiver 기동
-        print("VoIP 수신기 기동 — 2초 후 음성 전송...")
-        for _ in range(2):
-            await _telemetry(client, TARGET_LAT, TARGET_LNG, 100 - STEPS * 0.25)
-            await asyncio.sleep(1)
-
         try:
-            # ── Phase 5: UDP 전송 ─────────────────────────────────────────
-            await _send_audio(pcm_data, voip_id)
-            receiver.wait()                     # 재생 완료 대기
-
-            # ── Phase 6: 계속 호버링 ───────────────────────────────────────
+            # ── Phase 4: 계속 호버링 ───────────────────────────────────────
             print("\n드론 현장 호버링 중 (Ctrl+C로 종료)\n")
             tick = 0
             while True:
@@ -189,50 +164,6 @@ async def _detection(client: httpx.AsyncClient, cell_id: str | None) -> dict:
         "stream_url": None,
     })
     return r.json()
-
-
-def _start_receiver(session_id: str) -> subprocess.Popen:
-    env = {**os.environ, "DRONE_SERVER_URL": SERVER_URL, "VOIP_HOST": VOIP_HOST}
-    return subprocess.Popen(
-        ["python3", "-u", str(Path(__file__).parent / "receiver.py"), "--session", session_id],
-        env=env,
-    )
-
-
-def _generate_tts(text: str) -> bytes:
-    aiff = "/tmp/survivor.aiff"
-    pcm  = "/tmp/survivor.pcm"
-    print(f"TTS 생성 중 : \"{text}\"")
-    subprocess.run(["say", "-v", "Yuna", "-o", aiff, text], check=True)
-    subprocess.run([
-        "ffmpeg", "-y", "-i", aiff,
-        "-f", "s16le", "-acodec", "pcm_s16le",
-        "-ar", str(SAMPLE_RATE), "-ac", "1", pcm,
-    ], capture_output=True, check=True)
-    data = open(pcm, "rb").read()
-    print(f"PCM 생성 완료 : {len(data):,} bytes ({len(data) // FRAME_BYTES} frames)")
-    return data
-
-
-async def _send_audio(pcm_data: bytes, session_id: str) -> None:
-    sid    = uuid.UUID(session_id)
-    header = struct.Struct("!16sBL")
-    sock   = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-    print(f"UDP 음성 전송 → {VOIP_HOST}:{VOIP_PORT}")
-    seq, offset = 0, 0
-    while offset < len(pcm_data):
-        chunk = pcm_data[offset : offset + FRAME_BYTES]
-        if len(chunk) < FRAME_BYTES:
-            chunk = chunk + b"\x00" * (FRAME_BYTES - len(chunk))
-        packet = header.pack(sid.bytes, 0, seq) + chunk  # role=0 (SURVIVOR)
-        sock.sendto(packet, (VOIP_HOST, VOIP_PORT))
-        seq    += 1
-        offset += FRAME_BYTES
-        await asyncio.sleep(0.02)
-
-    sock.close()
-    print("음성 전송 완료")
 
 
 def _banner(msg: str) -> None:

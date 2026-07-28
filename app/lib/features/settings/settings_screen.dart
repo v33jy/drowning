@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
-import '../../core/widgets/severity.dart';
-import '../../core/widgets/status_chip.dart';
 import '../control/providers/grid_provider.dart';
 import '../control/providers/ws_providers.dart';
 import '../control/widgets/legend_popup.dart';
@@ -22,19 +19,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  PermissionStatus? _micStatus;
-
-  @override
-  void initState() {
-    super.initState();
-    _refreshMicStatus();
-  }
-
-  Future<void> _refreshMicStatus() async {
-    final status = await Permission.microphone.status;
-    if (mounted) setState(() => _micStatus = status);
-  }
-
   Future<void> _editHost() async {
     final settings = ref.read(settingsProvider);
     final controller = TextEditingController(text: settings.serverHost);
@@ -120,21 +104,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: const Text('Port'),
             trailing: Text('${settings.httpPort}', style: const TextStyle(color: AppColors.textSecondary)),
             onTap: _editPort,
-          ),
-          const Divider(height: AppSpacing.xl),
-          const _GroupLabel('권한'),
-          ListTile(
-            title: const Text('마이크'),
-            trailing: _micStatus == null
-                ? const SizedBox.shrink()
-                : StatusChip(
-                    severity: _micStatus!.isGranted ? Severity.ok : Severity.danger,
-                    label: _micStatus!.isGranted ? '허용됨' : '거부됨',
-                  ),
-            onTap: () async {
-              await openAppSettings();
-              _refreshMicStatus();
-            },
           ),
           const Divider(height: AppSpacing.xl),
           const _GroupLabel('정보'),

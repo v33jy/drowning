@@ -10,13 +10,13 @@ from __future__ import annotations
 
 import base64
 import time
+import uuid
 
 from fastapi import HTTPException
 
 import state
 from heatmap import latlng_to_cell_id
 from models import DetectionEvent, DroneTelemetry, SignalReading, WsMessage
-from voip.session import VoIPSession
 
 
 async def submit_telemetry(drone_id: int, telemetry: DroneTelemetry) -> dict:
@@ -60,22 +60,15 @@ async def submit_signal(drone_id: int, reading: SignalReading) -> str:
 
 
 async def report_detection(event: DetectionEvent) -> dict:
-    """Record a survivor detection and open a VoIP session for it.
-
-    The session is created immediately (before any await) so the app can open
-    the call channel without a round-trip delay.
-    """
-    session = VoIPSession(drone_id=event.drone_id, cell_id=event.cell_id)
-
+    """Record a survivor detection, tagged with a unique detection_id."""
     entry = {
         **event.model_dump(),
         "timestamp": time.time(),
-        "voip_session_id": session.session_id,
+        "detection_id": str(uuid.uuid4()),
     }
 
     async with state.lock:
         state.detections.append(entry)
-        state.voip_sessions[session.session_id] = session
 
     await state.manager.broadcast(WsMessage.detection(entry))
     return entry
