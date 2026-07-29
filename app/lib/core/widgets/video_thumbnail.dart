@@ -18,17 +18,29 @@ class VideoThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppRadius.sm),
-      child: Container(
-        width: double.infinity,
-        height: height,
-        color: AppColors.surfaceSunken,
-        child: frameB64 == null
-            ? const Center(
-                child: Icon(Icons.videocam_off_outlined, size: 28, color: AppColors.textSecondary),
-              )
-            : Image.memory(base64Decode(frameB64!), fit: BoxFit.contain, gaplessPlayback: true),
+    // The box itself is shaped to the camera's true 16:9 ratio, not just
+    // the image inside it — a width:infinity/fixed-height box left a lot of
+    // bare surfaceSunken background around a small floating 16:9 image on
+    // any width narrower than ~2.5x the height. Height stays the caller's
+    // fixed budget (unchanged) so this can't blow the detection sheet's
+    // maxHeightFraction the way a width-driven AspectRatio previously did.
+    return SizedBox(
+      height: height,
+      child: Center(
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            child: Container(
+              color: AppColors.surfaceSunken,
+              child: frameB64 == null
+                  ? const Center(
+                      child: Icon(Icons.videocam_off_outlined, size: 28, color: AppColors.textSecondary),
+                    )
+                  : Image.memory(base64Decode(frameB64!), fit: BoxFit.contain, gaplessPlayback: true),
+            ),
+          ),
+        ),
       ),
     );
   }
