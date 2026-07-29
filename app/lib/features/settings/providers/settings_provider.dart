@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../config.dart';
 
@@ -9,47 +8,17 @@ class AppSettings {
   final String serverHost;
   final int httpPort;
 
-  String get baseUrl => 'http://$serverHost:$httpPort';
-  String get wsUrl => 'ws://$serverHost:$httpPort/ws/control';
-
-  AppSettings copyWith({String? serverHost, int? httpPort}) => AppSettings(
-        serverHost: serverHost ?? this.serverHost,
-        httpPort: httpPort ?? this.httpPort,
-      );
+  // 443 포트는 Cloudflare Tunnel 같은 TLS 종단을 가리키는 관례로 취급 —
+  // 그 경우 포트를 URL에 안 붙이고 보안 스킴을 쓴다.
+  String get baseUrl => httpPort == 443 ? 'https://$serverHost' : 'http://$serverHost:$httpPort';
+  String get wsUrl => httpPort == 443
+      ? 'wss://$serverHost/ws/control'
+      : 'ws://$serverHost:$httpPort/ws/control';
 }
 
-/// [Config]'s compile-time values are only the fallback default — 설정
-/// 화면에서 바꾼 값은 SharedPreferences에 저장되고 다음 실행에도 유지된다.
-class SettingsNotifier extends Notifier<AppSettings> {
-  static const _keyHost = 'server_host';
-  static const _keyPort = 'http_port';
-  Future<void>? _loadFuture;
-
-  @override
-  AppSettings build() {
-    _loadFuture = _load();
-    return const AppSettings(serverHost: Config.serverHost, httpPort: Config.httpPort);
-  }
-
-  Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final host = prefs.getString(_keyHost);
-    final port = prefs.getInt(_keyPort);
-    if (host != null || port != null) {
-      state = state.copyWith(serverHost: host, httpPort: port);
-    }
-  }
-
-  /// [BootScreen] awaits this before its first connect, so a previously
-  /// saved server address is honored instead of racing the default.
-  Future<void> ensureLoaded() => _loadFuture ?? Future.value();
-
-  Future<void> update({String? serverHost, int? httpPort}) async {
-    state = state.copyWith(serverHost: serverHost, httpPort: httpPort);
-    final prefs = await SharedPreferences.getInstance();
-    if (serverHost != null) await prefs.setString(_keyHost, serverHost);
-    if (httpPort != null) await prefs.setInt(_keyPort, httpPort);
-  }
-}
-
-final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(SettingsNotifier.new);
+/// 서버 주소는 빌드 시 고정되는 값([Config])이라 런타임에 바꿀 수 없다 —
+/// 현장 배치된 관제 앱이 임의로 다른 백엔드에 붙는 걸 막기 위해 설정
+/// 화면에 편집 UI를 두지 않는다.
+final settingsProvider = Provider<AppSettings>(
+  (ref) => const AppSettings(serverHost: Config.serverHost, httpPort: Config.httpPort),
+);

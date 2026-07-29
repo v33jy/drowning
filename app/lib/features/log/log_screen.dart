@@ -105,115 +105,150 @@ class _LogScreenState extends ConsumerState<LogScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
-            child: TextField(
-              controller: _searchController,
-              style: Theme.of(context).textTheme.bodyMedium,
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search, size: 20),
-                hintText: '드론 · 셀 검색',
-                suffixIcon: _query.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close, size: 18),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _query = '');
-                        },
-                      ),
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
               ),
-              onChanged: (v) => setState(() => _query = v),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            child: SegmentedButton<_LogFilter>(
-              segments: const [
-                ButtonSegment(value: _LogFilter.all, label: Text('전체')),
-                ButtonSegment(value: _LogFilter.unresolved, label: Text('미확인')),
-              ],
-              selected: {_filter},
-              onSelectionChanged: (s) => setState(() => _filter = s.first),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const _FilterGroupLabel('날짜'),
-                const SizedBox(height: AppSpacing.xs),
-                FilterChip(
-                  label: Text(_dateRange == null
-                      ? '전체 기간'
-                      : '${_dateRange!.start.month}/${_dateRange!.start.day} ~ '
-                          '${_dateRange!.end.month}/${_dateRange!.end.day}'),
-                  selected: _dateRange != null,
-                  onSelected: (_) => _pickDateRange(),
-                  avatar: const Icon(Icons.calendar_today_outlined, size: 15),
-                  onDeleted: _dateRange == null ? null : () => setState(() => _dateRange = null),
-                ),
-                if (availableDrones.isNotEmpty) ...[
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('조회 조건', style: AppTypography.eyebrow(AppColors.navy)),
                   const SizedBox(height: AppSpacing.md),
-                  const _FilterGroupLabel('드론'),
+                  TextField(
+                    controller: _searchController,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      hintText: '드론 · 셀 검색',
+                      suffixIcon: _query.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.close, size: 18),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _query = '');
+                              },
+                            ),
+                    ),
+                    onChanged: (v) => setState(() => _query = v),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  SegmentedButton<_LogFilter>(
+                    segments: const [
+                      ButtonSegment(value: _LogFilter.all, label: Text('전체')),
+                      ButtonSegment(value: _LogFilter.unresolved, label: Text('미확인')),
+                    ],
+                    selected: {_filter},
+                    onSelectionChanged: (s) => setState(() => _filter = s.first),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  const _FilterGroupLabel('날짜'),
+                  const SizedBox(height: AppSpacing.xs),
+                  _LogFilterChip(
+                    label: _dateRange == null
+                        ? '전체 기간'
+                        : '${_dateRange!.start.month}/${_dateRange!.start.day} ~ '
+                            '${_dateRange!.end.month}/${_dateRange!.end.day}',
+                    selected: _dateRange != null,
+                    onSelected: (_) => _pickDateRange(),
+                    avatarIcon: Icons.calendar_today_outlined,
+                    onDeleted: _dateRange == null ? null : () => setState(() => _dateRange = null),
+                  ),
+                  if (availableDrones.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    const _FilterGroupLabel('드론'),
+                    const SizedBox(height: AppSpacing.xs),
+                    Wrap(
+                      spacing: AppSpacing.sm,
+                      runSpacing: AppSpacing.sm,
+                      children: [
+                        for (final d in availableDrones)
+                          _LogFilterChip(
+                            label: '#$d',
+                            selected: _selectedDrones.contains(d),
+                            onSelected: (sel) => setState(
+                              () => sel ? _selectedDrones.add(d) : _selectedDrones.remove(d),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: AppSpacing.md),
+                  const _FilterGroupLabel('상태'),
                   const SizedBox(height: AppSpacing.xs),
                   Wrap(
                     spacing: AppSpacing.sm,
                     runSpacing: AppSpacing.sm,
                     children: [
-                      for (final d in availableDrones)
-                        FilterChip(
-                          label: Text('#$d'),
-                          selected: _selectedDrones.contains(d),
+                      for (final s in _StatusFilter.values)
+                        _LogFilterChip(
+                          label: _statusFilterLabel(s),
+                          selected: _selectedStatuses.contains(s),
                           onSelected: (sel) => setState(
-                            () => sel ? _selectedDrones.add(d) : _selectedDrones.remove(d),
+                            () => sel ? _selectedStatuses.add(s) : _selectedStatuses.remove(s),
                           ),
                         ),
                     ],
                   ),
                 ],
-                const SizedBox(height: AppSpacing.md),
-                const _FilterGroupLabel('상태'),
-                const SizedBox(height: AppSpacing.xs),
-                Wrap(
-                  spacing: AppSpacing.sm,
-                  runSpacing: AppSpacing.sm,
-                  children: [
-                    for (final s in _StatusFilter.values)
-                      FilterChip(
-                        label: Text(_statusFilterLabel(s)),
-                        selected: _selectedStatuses.contains(s),
-                        onSelected: (sel) => setState(
-                          () => sel ? _selectedStatuses.add(s) : _selectedStatuses.remove(s),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
+              ),
             ),
           ),
-          const SizedBox(height: AppSpacing.md),
-          const Divider(height: 1),
           Expanded(
-            child: filtered.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.inbox_outlined, size: 32, color: AppColors.textSecondary),
-                        const SizedBox(height: AppSpacing.sm),
-                        Text('기록 없음', style: Theme.of(context).textTheme.bodyMedium),
-                      ],
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.all(color: AppColors.border),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.sm),
+                      child: Row(
+                        children: [
+                          Text('탐지 · 알림', style: AppTypography.eyebrow(AppColors.navy)),
+                          const Spacer(),
+                          Text('총 ${filtered.length}건',
+                              style: AppTypography.eyebrow(AppColors.textSecondary)),
+                        ],
+                      ),
                     ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, i) => _LogTile(entry: filtered[i]),
-                  ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.inbox_outlined,
+                                      size: 32, color: AppColors.textSecondary),
+                                  const SizedBox(height: AppSpacing.sm),
+                                  Text('기록 없음', style: Theme.of(context).textTheme.bodyMedium),
+                                ],
+                              ),
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                              itemCount: filtered.length,
+                              separatorBuilder: (_, _) => const Divider(height: 1),
+                              itemBuilder: (context, i) => _LogTile(entry: filtered[i]),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -228,6 +263,44 @@ class _FilterGroupLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(text, style: AppTypography.eyebrow(AppColors.textSecondary));
+  }
+}
+
+/// Selected state is a solid navy fill + white label, not the default
+/// Material checkmark — a plain FilterChip's checkmark stayed bright blue
+/// regardless of [ChipThemeData], which read as an unrelated accent next to
+/// the rest of this screen's navy-only "selected" language.
+class _LogFilterChip extends StatelessWidget {
+  const _LogFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+    this.avatarIcon,
+    this.onDeleted,
+  });
+
+  final String label;
+  final bool selected;
+  final ValueChanged<bool> onSelected;
+  final IconData? avatarIcon;
+  final VoidCallback? onDeleted;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = selected ? Colors.white : AppColors.textPrimary;
+    return FilterChip(
+      label: Text(label),
+      avatar: avatarIcon == null ? null : Icon(avatarIcon, size: 15, color: fg),
+      selected: selected,
+      onSelected: onSelected,
+      onDeleted: onDeleted,
+      showCheckmark: false,
+      backgroundColor: AppColors.surface,
+      selectedColor: AppColors.navy,
+      side: BorderSide(color: selected ? AppColors.navy : AppColors.border),
+      labelStyle: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: fg),
+      deleteIconColor: fg,
+    );
   }
 }
 

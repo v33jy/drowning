@@ -1,27 +1,38 @@
 import 'package:flutter/material.dart';
 
 /// Design token source of truth — Mission Control design system.
-/// Light theme only; dark mode and outdoor high-contrast mode are out of
-/// scope for this project.
+/// Palette follows KRDS (Korea government Design System) tokens, the same
+/// system mnd.go.kr is built on — chosen so a 관제 app used alongside
+/// military/government operations reads as institutional, not a generic
+/// SaaS dashboard. Light theme only; dark mode and outdoor high-contrast
+/// mode are out of scope for this project.
 class AppColors {
   AppColors._();
 
-  static const Color primary = Color(0xFF1D4ED8);
+  static const Color primary = Color(0xFF0B50D0); // KRDS primary-60
   static const Color primaryInk = Color(0xFFFFFFFF);
 
-  static const Color background = Color(0xFFF8FAFC);
+  /// Deep navy identity color (KRDS secondary-80) — app bars and other
+  /// authority-bearing chrome, distinct from [primary]'s interactive blue.
+  static const Color navy = Color(0xFF052B57);
+
+  static const Color background = Color(0xFFF4F5F6); // KRDS gray-5
   static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceSunken = Color(0xFFF1F5F9);
-  static const Color border = Color(0xFFE2E8F0);
+  static const Color surfaceSunken = Color(0xFFEEF2F7); // KRDS secondary-5
+  static const Color border = Color(0xFFCDD1D5); // KRDS gray-20
 
-  static const Color textPrimary = Color(0xFF0F172A);
-  static const Color textSecondary = Color(0xFF64748B);
+  static const Color textPrimary = Color(0xFF1E2124); // KRDS gray-90
+  static const Color textSecondary = Color(0xFF6D7882); // KRDS gray-50
 
-  static const Color success = Color(0xFF16A34A);
-  static const Color warning = Color(0xFFF59E0B);
-  static const Color danger = Color(0xFFDC2626);
+  // One step (or more) deeper than the raw KRDS "-50" tier — these carry a
+  // drone's status on the map marker itself (small icon, no tint behind it),
+  // where the lighter -50 tones read as washed out next to the rest of the
+  // navy-anchored palette instead of as a confident status color.
+  static const Color success = Color(0xFF285D33); // KRDS success-70
+  static const Color warning = Color(0xFFB45309); // deep amber — no KRDS "warning" token exists
+  static const Color danger = Color(0xFFBD2C0F); // KRDS danger-60
   static const Color info = primary;
-  static const Color offline = Color(0xFF6B7280);
+  static const Color offline = Color(0xFF58616A); // KRDS gray-60
 }
 
 /// Semantic status colors that Material 3's [ColorScheme] has no native slot

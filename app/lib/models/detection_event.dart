@@ -4,14 +4,14 @@ class DetectionEvent {
   final double rssDbm;
   final String? streamUrl;
   final double timestamp;
-  final String voipSessionId;
+  final String detectionId;
 
   const DetectionEvent({
     required this.droneId,
     required this.cellId,
     required this.rssDbm,
     required this.timestamp,
-    required this.voipSessionId,
+    required this.detectionId,
     this.streamUrl,
   });
 
@@ -20,7 +20,7 @@ class DetectionEvent {
         cellId: json['cell_id'] as String,
         rssDbm: (json['rss_dbm'] as num).toDouble(),
         timestamp: (json['timestamp'] as num).toDouble(),
-        voipSessionId: json['voip_session_id'] as String,
+        detectionId: json['detection_id'] as String,
         streamUrl: json['stream_url'] as String?,
       );
 }

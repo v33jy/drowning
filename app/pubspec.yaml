@@ -13,11 +13,7 @@ dependencies:
   latlong2: ^0.9.1             # LatLng type for flutter_map
   web_socket_channel: ^3.0.1   # WebSocket to FastAPI server
   flutter_riverpod: ^2.6.1     # State management
-  record: ^7.1.1               # Microphone capture → PCM stream
-  flutter_sound: ^9.30.0       # PCM playback from stream (VoIP)
-  permission_handler: ^11.3.1  # Microphone permission
   http: ^1.2.1                 # Initial HTTP calls (grid definition)
-  shared_preferences: ^2.3.3   # Persist editable server host/port (Settings)
 
 dev_dependencies:
   flutter_test:
@@ -37,6 +33,3 @@ flutter:
           weight: 600
         - asset: assets/fonts/PublicSans-Variable.ttf
           weight: 700
-
-dependency_overrides:
-  record_linux: ^2.1.1

@@ -19,10 +19,11 @@ import 'providers/map_focus_provider.dart';
 import 'providers/ws_providers.dart';
 import 'widgets/drone_list_sheet.dart';
 import 'widgets/heatmap_painter.dart';
+import 'widgets/help_screen.dart';
 import 'widgets/marker_layer.dart';
 import 'widgets/offline_banner.dart';
 
-enum _ControlMenuItem { log, settings }
+enum _ControlMenuItem { log, help, settings }
 
 /// 관제 화면 — the app's sole home screen. 기록/설정 are reached via the
 /// menu icon (pushed routes with their own back button), not bottom tabs.
@@ -44,8 +45,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     super.dispose();
   }
 
-  // 통화 중이든 그냥 최소화한 상태든, 시트가 열려 있는 동안엔 새 탐지가 끼어들지
-  // 않는다 — 큐 칩 숫자만 늘어나고, 현재 시트가 끝나야 다음 걸 연다.
+  // 시트가 열려 있는 동안엔 새 탐지가 끼어들지 않는다 — 큐 칩 숫자만
+  // 늘어나고, 현재 시트가 끝나야 다음 걸 연다.
   Future<void> _openDetectionSheet(DetectionEvent event) async {
     setState(() => _detectionSheetOpen = true);
     final outcome = await showDetectionSheet(context, event);
@@ -147,6 +148,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                   onSelected: (item) {
                     final route = switch (item) {
                       _ControlMenuItem.log => const LogScreen(),
+                      _ControlMenuItem.help => const HelpScreen(),
                       _ControlMenuItem.settings => const SettingsScreen(),
                     };
                     Navigator.of(context).push(MaterialPageRoute(builder: (_) => route));
@@ -162,6 +164,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
   }
 }
 
+/// Navy fill (vs. the white pills next to it) marks this as the one control
+/// that opens the app's official navigation — same navy the pushed screens'
+/// app bars use, borrowed from mnd.go.kr's own dark GNB toggle.
 class _ControlMenuButton extends StatelessWidget {
   const _ControlMenuButton({required this.onSelected});
 
@@ -173,17 +178,16 @@ class _ControlMenuButton extends StatelessWidget {
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.navy,
         shape: BoxShape.circle,
-        border: Border.all(color: AppColors.border),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 6, offset: const Offset(0, 1)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.16), blurRadius: 6, offset: const Offset(0, 1)),
         ],
       ),
       child: PopupMenuButton<_ControlMenuItem>(
         tooltip: '메뉴',
         padding: EdgeInsets.zero,
-        icon: const Icon(Icons.menu_outlined, color: AppColors.textPrimary, size: 20),
+        icon: const Icon(Icons.menu_outlined, color: Colors.white, size: 20),
         offset: const Offset(0, AppSpacing.xl),
         onSelected: onSelected,
         itemBuilder: (context) => const [
@@ -191,6 +195,11 @@ class _ControlMenuButton extends StatelessWidget {
             value: _ControlMenuItem.log,
             child: _MenuRow(icon: Icons.list_alt_outlined, label: '기록'),
           ),
+          PopupMenuItem(
+            value: _ControlMenuItem.help,
+            child: _MenuRow(icon: Icons.help_outline, label: '도움말'),
+          ),
+          PopupMenuDivider(),
           PopupMenuItem(
             value: _ControlMenuItem.settings,
             child: _MenuRow(icon: Icons.settings_outlined, label: '설정'),
@@ -211,7 +220,7 @@ class _MenuRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 20, color: AppColors.textSecondary),
+        Icon(icon, size: 20, color: AppColors.navy),
         const SizedBox(width: AppSpacing.md),
         Text(label, style: Theme.of(context).textTheme.bodyMedium),
       ],

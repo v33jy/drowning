@@ -23,7 +23,7 @@ class SheetHandle extends StatelessWidget {
   }
 }
 
-/// Every modal bottom sheet in the app (detection, call, log detail, drone
+/// Every modal bottom sheet in the app (detection, log detail, drone
 /// detail) goes through this one helper so handle, max height, and padding
 /// stay identical everywhere — no screen hand-rolls its own sheet chrome.
 class AppBottomSheet {

@@ -34,11 +34,11 @@ class DetectionLogNotifier extends Notifier<List<DetectionLogEntry>> {
     state = [...state, DetectionLogEntry(event: event, status: DetectionStatus.pending)];
   }
 
-  /// Resolves the entry matching [sessionId] — 구조 완료/오탐 처리 결과 반영.
-  void resolve(String sessionId, DetectionStatus status) {
+  /// Resolves the entry matching [detectionId] — 구조 완료/오탐 처리 결과 반영.
+  void resolve(String detectionId, DetectionStatus status) {
     state = [
       for (final e in state)
-        if (e.event.voipSessionId == sessionId) e.copyWith(status: status) else e,
+        if (e.event.detectionId == detectionId) e.copyWith(status: status) else e,
     ];
   }
 }
