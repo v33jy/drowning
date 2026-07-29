@@ -4,7 +4,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../../../config.dart';
 import '../../../core/widgets/connection_badge.dart';
+import 'demo_feed.dart';
 
 /// One decoded WS envelope: `{"type": ..., "data": ...}`.
 class WsMessage {
@@ -24,6 +26,7 @@ class WsMessage {
 class WsClient {
   WebSocketChannel? _channel;
   Timer? _reconnectTimer;
+  Timer? _demoTimer;
   bool _disposed = false;
   String? _url;
 
@@ -50,6 +53,16 @@ class WsClient {
 
   Future<void> connect(String url) async {
     if (_disposed) return;
+    // Offline showcase build — no socket, no server. Replay a canned
+    // scenario into the same message stream every provider already listens
+    // to, so the rest of the app can't tell the difference.
+    if (Config.demoMode) {
+      _demoTimer?.cancel();
+      _setStatus(ConnectionStatus.connected);
+      _demoTimer = DemoFeed.start(this);
+      return;
+    }
+
     _url = url;
     _reconnectTimer?.cancel();
     await _channel?.sink.close();
@@ -79,6 +92,13 @@ class WsClient {
     }
   }
 
+  /// Injects a message as if it had arrived over the socket — [DemoFeed]'s
+  /// only way to reach the providers, since [_messageController] is private.
+  void emitDemo(String type, dynamic data) {
+    if (_disposed) return;
+    _messageController.add(WsMessage(type, data));
+  }
+
   void _onRaw(dynamic raw) {
     try {
       final msg = jsonDecode(raw as String) as Map<String, dynamic>;
@@ -98,6 +118,7 @@ class WsClient {
   void dispose() {
     _disposed = true;
     _reconnectTimer?.cancel();
+    _demoTimer?.cancel();
     _channel?.sink.close();
     _statusController.close();
     _messageController.close();
