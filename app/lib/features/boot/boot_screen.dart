@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../control/control_screen.dart';
+import '../control/data/demo_feed.dart';
 import '../control/providers/grid_provider.dart';
 import '../control/providers/ws_providers.dart';
 import '../settings/providers/settings_provider.dart';
@@ -39,6 +41,16 @@ class _BootScreenState extends ConsumerState<BootScreen> {
 
   Future<void> _connectToServer() async {
     try {
+      // Offline showcase build — no HTTP call, no real server; grid + drone
+      // data both come from DemoFeed instead (see Config.demoMode).
+      if (Config.demoMode) {
+        ref.read(gridDefProvider.notifier).state = DemoFeed.gridDef();
+        await ref.read(wsClientProvider).connect(Config.wsUrl);
+        if (!mounted) return;
+        setState(() => _phase = _BootPhase.success);
+        return;
+      }
+
       final settings = ref.read(settingsProvider);
 
       await fetchAndApplyGrid(ref, settings.baseUrl);

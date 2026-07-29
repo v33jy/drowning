@@ -4,6 +4,12 @@ class Config {
   static const int httpPort =
       int.fromEnvironment('HTTP_PORT', defaultValue: 8000);
 
+  /// Offline showcase build — no server/network calls at all. [WsClient]
+  /// replays a canned scenario instead of opening a real socket, and
+  /// [BootScreen] skips the HTTP grid fetch. Used for static hosting
+  /// (e.g. GitHub Pages) where there's no backend to reach.
+  static const bool demoMode = bool.fromEnvironment('DEMO_MODE', defaultValue: false);
+
   static String get wsUrl => _buildUrl(secureScheme: 'wss', plainScheme: 'ws', path: '/ws/control');
   static String get baseUrl => _buildUrl(secureScheme: 'https', plainScheme: 'http');
 
