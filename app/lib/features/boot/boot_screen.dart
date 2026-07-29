@@ -91,15 +91,35 @@ class _SplashBody extends StatelessWidget {
     return Column(
       children: [
         const Spacer(),
-        const Icon(Icons.satellite_alt_outlined,
-            size: 48, color: AppColors.primary),
-        const SizedBox(height: AppSpacing.md),
-        Text('Mission Control', style: Theme.of(context).textTheme.displaySmall),
+        // Explicit Center + mainAxisSize.min + textAlign.center on every
+        // line — belt-and-suspenders against any ambient cross-axis
+        // stretch/alignment this Column might inherit, rather than relying
+        // on Column's default centering alone.
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.satellite_alt_outlined,
+                  size: 48, color: AppColors.primary),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                'Mission Control',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.displaySmall,
+              ),
+            ],
+          ),
+        ),
         const Spacer(),
         const Padding(
           padding: EdgeInsets.only(bottom: AppSpacing.xl),
-          child: Text('v1.0.0',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          child: Center(
+            child: Text(
+              'v1.0.0',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+          ),
         ),
       ],
     );
