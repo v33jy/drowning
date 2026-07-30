@@ -8,14 +8,15 @@ thin: parse the request, call the matching function here, shape the response.
 
 from __future__ import annotations
 
+import base64
 import time
+import uuid
 
 from fastapi import HTTPException
 
 import state
 from heatmap import latlng_to_cell_id
-from models import DetectionEvent, DroneTelemetry, SignalReading, VideoFrame, WsMessage
-from voip.session import VoIPSession
+from models import DetectionEvent, DroneTelemetry, SignalReading, WsMessage
 
 
 async def submit_telemetry(drone_id: int, telemetry: DroneTelemetry) -> dict:
@@ -59,31 +60,22 @@ async def submit_signal(drone_id: int, reading: SignalReading) -> str:
 
 
 async def report_detection(event: DetectionEvent) -> dict:
-    """Record a survivor detection and open a VoIP session for it.
-
-    The session is created immediately (before any await) so the app can open
-    the call channel without a round-trip delay.
-    """
-    session = VoIPSession(drone_id=event.drone_id, cell_id=event.cell_id)
-
+    """Record a survivor detection, tagged with a unique detection_id."""
     entry = {
         **event.model_dump(),
         "timestamp": time.time(),
-        "voip_session_id": session.session_id,
+        "detection_id": str(uuid.uuid4()),
     }
 
     async with state.lock:
         state.detections.append(entry)
-        state.voip_sessions[session.session_id] = session
 
     await state.manager.broadcast(WsMessage.detection(entry))
     return entry
 
 
-async def submit_video_frame(drone_id: int, frame: VideoFrame) -> None:
-    if drone_id not in state.drone_states:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Drone {drone_id} has not sent telemetry yet.",
-        )
-    await state.manager.broadcast(WsMessage.video_frame(drone_id, frame.frame_b64, frame.seq))
+async def submit_video_frame(drone_id: int, frame_bytes: bytes, seq: int) -> None:
+    """frame_bytes is a single raw JPEG frame — encoding happens only on this last
+    hop (server → app), so the drone → server WebSocket stays fully binary."""
+    frame_b64 = base64.b64encode(frame_bytes).decode("ascii")
+    await state.manager.broadcast(WsMessage.video_frame(drone_id, frame_b64, seq))

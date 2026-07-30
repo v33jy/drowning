@@ -19,9 +19,9 @@ import httpx
 
 BASE_URL = os.environ.get("DRONE_SERVER_URL", "http://localhost:8000")
 
-# Grid centre and step size (matches config.py defaults)
-LAT_MIN, LAT_MAX = 37.0, 37.1
-LNG_MIN, LNG_MAX = 127.0, 127.1
+# Grid bounds (matches config.py defaults / README's documented GRID_* startup values)
+LAT_MIN, LAT_MAX = 37.490, 37.515
+LNG_MIN, LNG_MAX = 127.020, 127.040
 
 
 class DroneSim:
@@ -33,6 +33,7 @@ class DroneSim:
         self.altitude = 30.0 + drone_id * 5
         self.battery = 100
         self.angle = random.uniform(0, 2 * math.pi)
+        self.cell_id: str | None = None
 
     def step(self):
         # Random walk within grid bounds
@@ -67,6 +68,7 @@ async def run(num_drones: int, trigger_detect: bool):
 
         if trigger_detect:
             await asyncio.sleep(1)
+            await _send_telemetry(client, drones[0], tick=0)
             await _send_detection(client, drones[0])
 
         tick = 0
@@ -74,11 +76,7 @@ async def run(num_drones: int, trigger_detect: bool):
             for drone in drones:
                 drone.step()
 
-                # Telemetry every tick
-                r = await client.post(f"/drones/{drone.drone_id}/telemetry", json=drone.telemetry())
-                print(f"[{tick:>4}] drone {drone.drone_id}  "
-                      f"lat={drone.lat:.4f} lng={drone.lng:.4f}  "
-                      f"bat={int(drone.battery)}%  → {r.status_code}")
+                await _send_telemetry(client, drone, tick)
 
                 # RSS signal every other tick
                 if tick % 2 == 0:
@@ -94,20 +92,24 @@ async def run(num_drones: int, trigger_detect: bool):
             await asyncio.sleep(1)
 
 
-async def _send_detection(client: httpx.AsyncClient, drone: DroneSim):
-    # Determine current cell_id from drone position
-    row = int((drone.lat - LAT_MIN) / (LAT_MAX - LAT_MIN) * 10)
-    col = int((drone.lng - LNG_MIN) / (LNG_MAX - LNG_MIN) * 10)
-    cell_id = f"{chr(65 + min(row, 9))}{min(col, 9)}"
+async def _send_telemetry(client: httpx.AsyncClient, drone: DroneSim, tick: int) -> None:
+    r = await client.post(f"/drones/{drone.drone_id}/telemetry", json=drone.telemetry())
+    if r.status_code == 200:
+        drone.cell_id = r.json().get("cell_id")
+    print(f"[{tick:>4}] drone {drone.drone_id}  "
+          f"lat={drone.lat:.4f} lng={drone.lng:.4f}  "
+          f"bat={int(drone.battery)}%  → {r.status_code}")
 
+
+async def _send_detection(client: httpx.AsyncClient, drone: DroneSim):
     payload = {
         "drone_id": drone.drone_id,
-        "cell_id": cell_id,
+        "cell_id": drone.cell_id,
         "rss_dbm": round(random.uniform(-55, -40), 1),
         "stream_url": None,
     }
     r = await client.post("/detection", json=payload)
-    print(f"\n*** DETECTION SENT  drone={drone.drone_id} cell={cell_id}  → {r.status_code} ***\n")
+    print(f"\n*** DETECTION SENT  drone={drone.drone_id} cell={drone.cell_id}  → {r.status_code} ***\n")
 
 
 if __name__ == "__main__":

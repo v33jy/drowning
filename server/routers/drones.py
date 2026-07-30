@@ -20,8 +20,9 @@ async def update_telemetry(
     telemetry: DroneTelemetry,
     drone_id: int = Path(..., ge=1),
 ) -> dict:
-    await services.submit_telemetry(drone_id, telemetry)
-    return {"ok": True}
+    # entry already includes cell_id, so return it as-is — lets the gateway
+    # get cell_id for detection events without duplicating the grid math.
+    return await services.submit_telemetry(drone_id, telemetry)
 
 
 @router.get("", summary="List all known drones (debug)")
