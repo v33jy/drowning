@@ -97,10 +97,10 @@ class _ControlScreenState extends State<ControlScreen> {
             ),
           ),
           children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.drone.control_app',
-            ),
+           TileLayer(
+  urlTemplate:
+      'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+),
             // Heatmap — only the layer rebuilds, not FlutterMap.
             Selector<AppState, _HeatmapData>(
               selector: (_, s) => _HeatmapData(s.heatmap, s.gridDef),
