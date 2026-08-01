@@ -1,0 +1,7 @@
+opencv-python-headless>=4.8,<5
+numpy>=1.24,<3
+websockets>=12.0
+
+# picamera2 is not listed here — it's preinstalled on Raspberry Pi OS and
+# isn't pip-installable on a regular dev machine. Only needed for the real
+# camera path; --mock runs fine without it.

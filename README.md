@@ -80,7 +80,7 @@ INPUT_MODE=mock DETECTION_MODE=rss_threshold SERVER_URL=http://localhost:8001 py
 
 ```bash
 cd pi
-pip install picamera2 opencv-python-headless websockets
+pip install -r requirements-camera.txt picamera2
 python3 camera_stream.py --drone-id 1 --fps 12
 
 # 카메라/라즈베리파이 없이 나머지 파이프라인만 확인하려면
