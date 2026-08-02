@@ -12,7 +12,7 @@ dependencies:
   flutter_map: ^7.0.2          # OSM map (offline-capable)
   latlong2: ^0.9.1             # LatLng type for flutter_map
   web_socket_channel: ^3.0.1   # WebSocket to FastAPI server
-  flutter_riverpod: ^2.6.1     # State management
+  flutter_riverpod: ^3.4.2     # State management
   http: ^1.2.1                 # Initial HTTP calls (grid definition)
 
 dev_dependencies:
