@@ -1,5 +1,5 @@
 opencv-python-headless>=4.8,<5
-numpy>=1.24,<3
+numpy>=2.5.1,<3
 websockets>=12.0
 
 # picamera2 is not listed here — it's preinstalled on Raspberry Pi OS and
