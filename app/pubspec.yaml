@@ -9,7 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_map: ^7.0.2          # OSM map (offline-capable)
+  flutter_map: ^8.3.1          # OSM map (offline-capable)
   latlong2: ^0.9.1             # LatLng type for flutter_map
   web_socket_channel: ^3.0.1   # WebSocket to FastAPI server
   flutter_riverpod: ^2.6.1     # State management
