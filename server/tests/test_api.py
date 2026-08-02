@@ -1,0 +1,144 @@
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import config
+import state
+from heatmap import HeatmapState
+from main import app
+from starlette.testclient import TestClient
+
+
+class ApiTestCase(unittest.TestCase):
+    """Base class: resets the module-global in-memory state before each test.
+
+    server/state.py is a single process-global store (see its docstring) —
+    without this reset, tests would leak drone/detection data into each other.
+    """
+
+    def setUp(self):
+        state.drone_states.clear()
+        state.detections.clear()
+        state.heatmap = HeatmapState()
+        state.manager._clients.clear()
+        self.client = TestClient(app)
+
+    def _mid_point(self):
+        return {
+            "lat": (config.LAT_MIN + config.LAT_MAX) / 2,
+            "lng": (config.LNG_MIN + config.LNG_MAX) / 2,
+        }
+
+
+class TelemetryTests(ApiTestCase):
+    def test_post_telemetry_then_list_drones(self):
+        payload = {**self._mid_point(), "altitude": 50.0, "battery": 80}
+        resp = self.client.post("/drones/1/telemetry", json=payload)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNotNone(resp.json()["cell_id"])
+
+        listed = self.client.get("/drones").json()
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["drone_id"], 1)
+
+
+class SignalTests(ApiTestCase):
+    def test_signal_before_telemetry_returns_404(self):
+        resp = self.client.post("/drones/1/signal", json={"rss_dbm": -60.0})
+        self.assertEqual(resp.status_code, 404)
+
+    def test_signal_after_telemetry_returns_cell_id(self):
+        payload = {**self._mid_point(), "altitude": 50.0, "battery": 80}
+        self.client.post("/drones/1/telemetry", json=payload)
+
+        resp = self.client.post("/drones/1/signal", json={"rss_dbm": -60.0})
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["ok"])
+        self.assertIsNotNone(resp.json()["cell_id"])
+
+    def test_signal_outside_grid_returns_422(self):
+        payload = {"lat": config.LAT_MIN - 1, "lng": config.LNG_MIN - 1, "altitude": 50.0, "battery": 80}
+        self.client.post("/drones/1/telemetry", json=payload)
+
+        resp = self.client.post("/drones/1/signal", json={"rss_dbm": -60.0})
+        self.assertEqual(resp.status_code, 422)
+
+
+class DetectionTests(ApiTestCase):
+    def test_report_then_list_detection(self):
+        event = {"drone_id": 1, "cell_id": "A0", "rss_dbm": -55.0}
+        resp = self.client.post("/detection", json=event)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["ok"])
+        self.assertIn("detection_id", resp.json())
+
+        listed = self.client.get("/detection").json()
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["cell_id"], "A0")
+
+
+class MetaTests(ApiTestCase):
+    def test_health(self):
+        resp = self.client.get("/health")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"status": "ok"})
+
+    def test_state_snapshot_shape(self):
+        resp = self.client.get("/state")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertIn("drones", body)
+        self.assertIn("heatmap", body)
+        self.assertIn("detections", body)
+
+    def test_heatmap_grid_cell_count(self):
+        resp = self.client.get("/heatmap/grid")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()), config.GRID_ROWS * config.GRID_COLS)
+
+
+class ControlWebSocketTests(ApiTestCase):
+    def test_connect_receives_init_snapshot(self):
+        with self.client.websocket_connect("/ws/control") as ws:
+            message = ws.receive_json()
+            self.assertEqual(message["type"], "init")
+            self.assertEqual(message["data"]["drones"], [])
+
+    def test_telemetry_broadcasts_drone_update(self):
+        with self.client.websocket_connect("/ws/control") as ws:
+            ws.receive_json()  # init
+
+            payload = {**self._mid_point(), "altitude": 50.0, "battery": 80}
+            self.client.post("/drones/1/telemetry", json=payload)
+
+            message = ws.receive_json()
+            self.assertEqual(message["type"], "drone_update")
+            self.assertEqual(message["data"]["drone_id"], 1)
+
+
+class VideoWebSocketTests(ApiTestCase):
+    def test_rejects_drone_without_telemetry(self):
+        with self.assertRaises(Exception):
+            with self.client.websocket_connect("/drones/1/video"):
+                pass
+
+    def test_accepts_and_relays_frame_after_telemetry(self):
+        payload = {**self._mid_point(), "altitude": 50.0, "battery": 80}
+        self.client.post("/drones/1/telemetry", json=payload)
+
+        with self.client.websocket_connect("/ws/control") as control_ws:
+            control_ws.receive_json()  # init
+
+            with self.client.websocket_connect("/drones/1/video") as video_ws:
+                video_ws.send_bytes(b"\xff\xd8\xff\xfake-jpeg-bytes")
+
+                message = control_ws.receive_json()
+                self.assertEqual(message["type"], "video_frame")
+                self.assertEqual(message["data"]["drone_id"], 1)
+                self.assertEqual(message["data"]["seq"], 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
