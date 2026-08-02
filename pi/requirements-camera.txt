@@ -1,4 +1,4 @@
-opencv-python-headless>=4.8,<5
+opencv-python-headless>=5.0.0.93,<6
 numpy>=1.24,<3
 websockets>=17.0
 
