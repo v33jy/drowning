@@ -50,6 +50,7 @@ def generate_mock_packets() -> Iterator[str]:
         yield _build_packet(_TARGET_LAT, _TARGET_LNG, rssi, int(battery))
         time.sleep(settings.send_interval)
 
+
 def _read_serial_lines() -> Iterator[str]:
     """Read UART lines. If the connection drops (drone vibration, loose
     cable), keep retrying instead of killing the process."""
