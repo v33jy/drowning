@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r server/requirements.txt
+          pip install -r pi/gateway/requirements.txt
+
+      - name: Run server tests
+        run: python -m unittest discover -s tests -v
+        working-directory: server
+
+      - name: Run pi/gateway tests
+        run: python -m unittest discover -s tests -v
+        working-directory: pi/gateway

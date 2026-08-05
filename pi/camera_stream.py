@@ -16,7 +16,7 @@ Env vars:
     DRONE_SERVER_URL   Server address (default: http://localhost:8001)
 
 Requirements:
-    pip install picamera2 opencv-python-headless websockets
+    pip install -r requirements-camera.txt picamera2
     (picamera2 is usually preinstalled on Raspberry Pi OS; not needed for --mock)
 
 Note:

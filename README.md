@@ -1,5 +1,7 @@
 # drowning — 다중 드론 릴레이 기반 재난 통신망 복구 및 요구조자 관제 시스템
 
+[![CI](https://github.com/v33jy/drowning/actions/workflows/ci.yml/badge.svg)](https://github.com/v33jy/drowning/actions/workflows/ci.yml)
+
 드론이 재난 지역 상공을 돌아다니며 통신 신호를 릴레이하고, 요구조자를 찾아내면 관제 앱에 위치와 영상을 바로 띄워주는 시스템입니다.
 
 ## 구조
@@ -80,7 +82,7 @@ INPUT_MODE=mock DETECTION_MODE=rss_threshold SERVER_URL=http://localhost:8001 py
 
 ```bash
 cd pi
-pip install picamera2 opencv-python-headless websockets
+pip install -r requirements-camera.txt picamera2
 python3 camera_stream.py --drone-id 1 --fps 12
 
 # 카메라/라즈베리파이 없이 나머지 파이프라인만 확인하려면

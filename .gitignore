@@ -6,3 +6,8 @@ venv/
 
 # macOS
 .DS_Store
+
+# Personal working notes (already-tracked docs like README.md are unaffected)
+*.md
+# ...except GitHub's own template files, which must be .md to be recognized
+!.github/**/*.md

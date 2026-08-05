@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/ws_client.dart';
 import 'ws_providers.dart';
 
-/// Latest video frame per drone (base64 PNG) — just the last one, no
+/// Latest video frame per drone (base64 JPEG) — just the last one, no
 /// buffering. Rough live-glance thumbnail use only, not a real video player.
 class VideoFrameNotifier extends Notifier<Map<int, String>> {
   @override
