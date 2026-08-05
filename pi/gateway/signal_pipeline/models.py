@@ -49,6 +49,8 @@ class FpgaResult:
     sequence: int
     peak_bin: int
     peak_power: float
+    target_power: float
+    noise_floor: float
     rss_dbm: float
     detected: bool
 

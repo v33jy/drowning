@@ -34,34 +34,47 @@ class FpgaProtocolTests(unittest.TestCase):
 
 
 class MockFpgaTransportTests(unittest.TestCase):
-    def test_detects_expected_fft_peak_bin(self) -> None:
+    def test_detects_tone_at_target_bin(self) -> None:
+        # fpga/rtl/spectrum_analyzer.v의 TARGET_BIN=128과 맞춰야 detected=True가 됨.
         source = MockSdrSource(
-            tone_bin=3,
+            tone_bin=128,
             noise_amplitude=0,
         )
-        fpga = MockFpgaTransport(
-            detection_threshold_dbm=-20.0,
-        )
+        fpga = MockFpgaTransport()
 
         frame = source.next_frame()
         packet = encode_iq_frame(frame)
         result = fpga.process(packet)
 
         self.assertEqual(result.sequence, frame.sequence)
-        self.assertEqual(result.peak_bin, 3)
+        self.assertEqual(result.peak_bin, 128)
         self.assertTrue(result.detected)
+
+    def test_does_not_detect_tone_off_target_bin(self) -> None:
+        # target_bin(128)/interference_bin(310) 대역 밖의 신호는
+        # 아무리 세도 detected=False여야 함 — RTL과 같은 판정 기준인지 확인.
+        source = MockSdrSource(
+            tone_bin=3,
+            noise_amplitude=0,
+        )
+        fpga = MockFpgaTransport()
+
+        frame = source.next_frame()
+        packet = encode_iq_frame(frame)
+        result = fpga.process(packet)
+
+        self.assertEqual(result.peak_bin, 3)
+        self.assertFalse(result.detected)
 
 
 class SignalPipelineTests(unittest.TestCase):
     def test_processes_frames_in_sequence(self) -> None:
         pipeline = SignalPipeline(
             sdr_source=MockSdrSource(
-                tone_bin=3,
+                tone_bin=128,
                 noise_amplitude=0,
             ),
-            fpga_transport=MockFpgaTransport(
-                detection_threshold_dbm=-20.0,
-            ),
+            fpga_transport=MockFpgaTransport(),
         )
 
         first_result = pipeline.process_next_frame()
@@ -69,8 +82,8 @@ class SignalPipelineTests(unittest.TestCase):
 
         self.assertEqual(first_result.sequence, 0)
         self.assertEqual(second_result.sequence, 1)
-        self.assertEqual(first_result.peak_bin, 3)
-        self.assertEqual(second_result.peak_bin, 3)
+        self.assertEqual(first_result.peak_bin, 128)
+        self.assertEqual(second_result.peak_bin, 128)
 
 
 if __name__ == "__main__":

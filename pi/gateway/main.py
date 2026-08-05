@@ -7,9 +7,6 @@ from typing import Optional
 from client import GatewayClient, extract_drone_id
 from config import settings
 from packet_parser import PacketParseError, parse_packet
-from signal_pipeline.mock_fpga import MockFpgaTransport
-from signal_pipeline.mock_sdr import MockSdrSource
-from signal_pipeline.pipeline import SignalPipeline
 
 # Gangnam Station -> Sinnonhyeon Station exit 6 — same coordinates/RSS
 # formula as scenario.py, for a consistent demo scenario.
@@ -52,80 +49,6 @@ def generate_mock_packets() -> Iterator[str]:
         rssi = -40 + random.randint(-3, 0)
         yield _build_packet(_TARGET_LAT, _TARGET_LNG, rssi, int(battery))
         time.sleep(settings.send_interval)
-
-def generate_signal_pipeline_packets() -> Iterator[str]:
-    """
-    실제 RTL-SDR와 FPGA가 없는 상태에서 전체 신호 처리 흐름을 시험한다.
-
-    Mock SDR가 1024개의 I/Q 샘플을 만들고,
-    Raspberry Pi 코드가 이를 FPGA 패킷으로 변환한 뒤,
-    Mock FPGA가 (1024-point FFT와 동일한 결과를 내는) DFT로 RSS 계산을 수행한다.
-
-    계산된 RSS 값을 기존 Gateway CSV 패킷 형식에 넣어 반환한다.
-    """
-
-    pipeline = SignalPipeline(
-        sdr_source=MockSdrSource(
-            fft_size=1024,
-            tone_bin=3,
-            amplitude=12_000,
-            noise_amplitude=500,
-        ),
-        fpga_transport=MockFpgaTransport(
-            detection_threshold_dbm=-20.0,
-        ),
-    )
-
-    battery = 100.0
-
-    for step in range(1, _APPROACH_STEPS + 1):
-        t = step / _APPROACH_STEPS
-
-        latitude = _START_LAT + (_TARGET_LAT - _START_LAT) * t
-        longitude = _START_LNG + (_TARGET_LNG - _START_LNG) * t
-        battery = max(10.0, battery - 0.25)
-
-        fpga_result = pipeline.process_next_frame()
-        rssi = int(round(fpga_result.rss_dbm))
-
-        print(
-            f"[signal pipeline] sequence={fpga_result.sequence} "
-            f"peak_bin={fpga_result.peak_bin} "
-            f"rss={fpga_result.rss_dbm:.2f}dBm "
-            f"detected={fpga_result.detected}"
-        )
-
-        yield _build_packet(
-            latitude=latitude,
-            longitude=longitude,
-            rssi=rssi,
-            battery=int(battery),
-        )
-
-        time.sleep(settings.send_interval)
-
-    while True:
-        battery = max(10.0, battery - 0.05)
-
-        fpga_result = pipeline.process_next_frame()
-        rssi = int(round(fpga_result.rss_dbm))
-
-        print(
-            f"[signal pipeline] sequence={fpga_result.sequence} "
-            f"peak_bin={fpga_result.peak_bin} "
-            f"rss={fpga_result.rss_dbm:.2f}dBm "
-            f"detected={fpga_result.detected}"
-        )
-
-        yield _build_packet(
-            latitude=_TARGET_LAT,
-            longitude=_TARGET_LNG,
-            rssi=rssi,
-            battery=int(battery),
-        )
-
-        time.sleep(settings.send_interval)
-
 
 def _read_serial_lines() -> Iterator[str]:
     """Read UART lines. If the connection drops (drone vibration, loose
@@ -204,10 +127,6 @@ def get_packet_source() -> Iterator[str]:
     if mode == "mock":
         print("[input mode] mock test data")
         return generate_mock_packets()
-
-    if mode == "signal_mock":
-        print("[input mode] Mock SDR -> Mock FPGA signal pipeline")
-        return generate_signal_pipeline_packets()
 
     if mode == "serial":
         print("[input mode] UART serial data")
