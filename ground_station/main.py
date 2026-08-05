@@ -16,8 +16,6 @@ import os
 import time
 from typing import Optional
 
-from serial import Serial, SerialException
-
 SERIAL_PORT = os.getenv("SERIAL_PORT", "COM5")
 BAUD_RATE = int(os.getenv("BAUD_RATE", "115200"))
 SERIAL_RECONNECT_DELAY_SEC = float(os.getenv("SERIAL_RECONNECT_DELAY_SEC", "2"))
@@ -85,7 +83,13 @@ def handle_line(line: str) -> None:
 
 def run_serial_reader() -> None:
     """UART 한 줄씩 읽는다. 연결이 끊기면(케이블 재꽂기 등) 죽지 않고
-    자동으로 재연결한다 — pi/gateway의 시리얼 재연결 로직과 동일한 패턴."""
+    자동으로 재연결한다 — pi/gateway의 시리얼 재연결 로직과 동일한 패턴.
+
+    pyserial을 함수 안에서 import하는 이유도 pi/gateway와 동일 — 시리얼을
+    실제로 열 때만 필요하니, 이 함수를 안 쓰는 유닛 테스트는 pyserial 없이도
+    돌아가게 하기 위함."""
+    from serial import Serial, SerialException
+
     while True:
         try:
             print(f"[SERIAL connecting] port={SERIAL_PORT}, baud={BAUD_RATE}")
