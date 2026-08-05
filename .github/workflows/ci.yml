@@ -20,6 +20,7 @@ jobs:
         run: |
           pip install -r server/requirements.txt
           pip install -r pi/gateway/requirements.txt
+          pip install -r ground_station/requirements.txt
 
       - name: Run server tests
         run: python -m unittest discover -s tests -v
@@ -28,3 +29,7 @@ jobs:
       - name: Run pi/gateway tests
         run: python -m unittest discover -s tests -v
         working-directory: pi/gateway
+
+      - name: Run ground_station tests
+        run: python -m unittest discover -s tests -v
+        working-directory: ground_station
