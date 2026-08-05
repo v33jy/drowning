@@ -60,12 +60,21 @@ def encode_iq_frame(frame: IQFrame) -> bytes:
     return bytes(packet)
 
 
-def decode_iq_packet(packet: bytes) -> IQFrame:
+def decode_iq_packet(
+    packet: bytes,
+    sample_rate_hz: int = 2_400_000,
+    center_frequency_hz: int = 915_000_000,
+) -> IQFrame:
     """
     전송된 바이트 패킷을 다시 IQFrame으로 복원한다.
 
     현재는 Mock FPGA가 Raspberry Pi에서 만든 패킷을 검사하기 위해 사용한다.
     나중에는 FPGA 테스트벤치나 디버깅 코드에서도 같은 규격을 참고할 수 있다.
+
+    패킷 자체엔 sample_rate_hz/center_frequency_hz가 안 실려있어서(IQ 샘플과
+    시퀀스만 전송됨), 호출하는 쪽이 실제 SDR 설정값을 넘겨줘야 한다 — 안 넘기면
+    기본값으로 채워지는데, 이게 실제 SDR 설정과 다르면 IQFrame의 메타데이터만
+    조용히 틀린 값이 된다.
     """
 
     if len(packet) != PACKET_SIZE:
@@ -103,7 +112,7 @@ def decode_iq_packet(packet: bytes) -> IQFrame:
 
     return IQFrame(
         sequence=sequence,
-        sample_rate_hz=2_400_000,
-        center_frequency_hz=915_000_000,
+        sample_rate_hz=sample_rate_hz,
+        center_frequency_hz=center_frequency_hz,
         samples=samples,
     )

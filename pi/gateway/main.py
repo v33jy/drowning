@@ -59,7 +59,7 @@ def generate_signal_pipeline_packets() -> Iterator[str]:
 
     Mock SDR가 1024개의 I/Q 샘플을 만들고,
     Raspberry Pi 코드가 이를 FPGA 패킷으로 변환한 뒤,
-    Mock FPGA가 1024-point FFT와 RSS 계산을 수행한다.
+    Mock FPGA가 (1024-point FFT와 동일한 결과를 내는) DFT로 RSS 계산을 수행한다.
 
     계산된 RSS 값을 기존 Gateway CSV 패킷 형식에 넣어 반환한다.
     """
