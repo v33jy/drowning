@@ -57,16 +57,16 @@ def generate_signal_pipeline_packets() -> Iterator[str]:
     """
     실제 RTL-SDR와 FPGA가 없는 상태에서 전체 신호 처리 흐름을 시험한다.
 
-    Mock SDR가 16개의 I/Q 샘플을 만들고,
+    Mock SDR가 1024개의 I/Q 샘플을 만들고,
     Raspberry Pi 코드가 이를 FPGA 패킷으로 변환한 뒤,
-    Mock FPGA가 16-point FFT와 RSS 계산을 수행한다.
+    Mock FPGA가 1024-point FFT와 RSS 계산을 수행한다.
 
     계산된 RSS 값을 기존 Gateway CSV 패킷 형식에 넣어 반환한다.
     """
 
     pipeline = SignalPipeline(
         sdr_source=MockSdrSource(
-            fft_size=16,
+            fft_size=1024,
             tone_bin=3,
             amplitude=12_000,
             noise_amplitude=500,

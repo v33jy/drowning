@@ -6,23 +6,23 @@ from signal_pipeline.models import IQFrame
 
 class MockSdrSource:
     """
-    실제 RTL-SDR 대신 16개의 가상 I/Q 샘플을 생성한다.
+    실제 RTL-SDR 대신 1024개의 가상 I/Q 샘플을 생성한다.
 
-    FPGA의 16-point FFT 입력을 흉내 내기 위해
-    한 프레임마다 정확히 16개의 샘플을 반환한다.
+    FPGA의 1024-point FFT 입력을 흉내 내기 위해
+    한 프레임마다 정확히 1024개의 샘플을 반환한다.
     """
 
     def __init__(
         self,
         sample_rate_hz: int = 2_400_000,
         center_frequency_hz: int = 915_000_000,
-        fft_size: int = 16,
+        fft_size: int = 1024,
         tone_bin: int = 3,
         amplitude: int = 12_000,
         noise_amplitude: int = 500,
     ) -> None:
-        if fft_size != 16:
-            raise ValueError("This project currently uses a 16-point FFT")
+        if fft_size != 1024:
+            raise ValueError("This project currently uses a 1024-point FFT")
 
         if not 0 <= tone_bin < fft_size:
             raise ValueError("tone_bin must be between 0 and fft_size - 1")
@@ -43,7 +43,7 @@ class MockSdrSource:
 
     def next_frame(self) -> IQFrame:
         """
-        16개의 가상 복소수 신호를 생성하여 IQFrame으로 반환한다.
+        1024개의 가상 복소수 신호를 생성하여 IQFrame으로 반환한다.
         """
 
         samples: list[tuple[int, int]] = []

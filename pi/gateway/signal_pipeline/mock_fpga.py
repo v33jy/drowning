@@ -7,7 +7,7 @@ from signal_pipeline.models import FpgaResult
 
 class MockFpgaTransport:
     """
-    실제 Basys 3 FPGA 대신 Raspberry Pi 안에서 16-point FFT를 수행한다.
+    실제 Basys 3 FPGA 대신 Raspberry Pi 안에서 1024-point FFT를 수행한다.
 
     입력은 FPGA에 보낼 것과 동일한 bytes 패킷이고,
     출력은 실제 FPGA가 나중에 반환해야 할 FpgaResult 형식이다.
@@ -64,7 +64,7 @@ class MockFpgaTransport:
     @staticmethod
     def _dft(samples: list[complex]) -> list[complex]:
         """
-        16-point DFT를 계산한다.
+        1024-point DFT를 계산한다.
 
         실제 FPGA에서는 병렬 FFT 회로가 이 역할을 수행한다.
         Mock에서는 Python으로 같은 결과를 계산한다.

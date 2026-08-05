@@ -11,13 +11,13 @@ from signal_pipeline.pipeline import SignalPipeline
 
 
 class MockSdrSourceTests(unittest.TestCase):
-    def test_generates_sixteen_iq_samples(self) -> None:
+    def test_generates_1024_iq_samples(self) -> None:
         source = MockSdrSource()
 
         frame = source.next_frame()
 
         self.assertEqual(frame.sequence, 0)
-        self.assertEqual(len(frame.samples), 16)
+        self.assertEqual(len(frame.samples), 1024)
 
 
 class FpgaProtocolTests(unittest.TestCase):

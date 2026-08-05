@@ -5,9 +5,9 @@ from signal_pipeline.models import IQFrame
 
 MAGIC = b"\xAA\x55"
 VERSION = 1
-FFT_SIZE = 16
+FFT_SIZE = 1024
 
-_HEADER_FORMAT = ">2sBBI"
+_HEADER_FORMAT = ">2sBHI"
 _SAMPLE_FORMAT = ">hh"
 
 HEADER_SIZE = struct.calcsize(_HEADER_FORMAT)
@@ -24,8 +24,8 @@ def encode_iq_frame(frame: IQFrame) -> bytes:
     IQFrame을 FPGA SPI 전송용 바이트 패킷으로 변환한다.
 
     패킷 구성:
-    MAGIC(2바이트) + VERSION(1바이트) + SAMPLE_COUNT(1바이트)
-    + SEQUENCE(4바이트) + I/Q 샘플 16쌍(각 4바이트)
+    MAGIC(2바이트) + VERSION(1바이트) + SAMPLE_COUNT(2바이트, 최대 1024라 1바이트로는 못 담음)
+    + SEQUENCE(4바이트) + I/Q 샘플 1024쌍(각 4바이트)
     """
 
     if len(frame.samples) != FFT_SIZE:
