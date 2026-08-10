@@ -25,7 +25,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import detection, drones, meta, signals, video, websocket
+from routers import call, detection, drones, meta, signals, video, websocket
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
 
@@ -46,5 +46,6 @@ app.include_router(drones.router)
 app.include_router(signals.router)
 app.include_router(detection.router)
 app.include_router(video.router)
+app.include_router(call.router)
 app.include_router(meta.router)
 app.include_router(websocket.router)

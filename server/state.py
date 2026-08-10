@@ -10,6 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import collections
+from dataclasses import dataclass
+from typing import Optional
+
+from fastapi import WebSocket
 
 import config
 from heatmap import HeatmapState
@@ -24,3 +28,20 @@ detections: collections.deque[dict] = collections.deque(maxlen=config.MAX_DETECT
 manager = ConnectionManager()
 
 lock = asyncio.Lock()
+
+
+@dataclass
+class CallSession:
+    session_id: str
+    drone_id: int
+    cell_id: str
+    created_at: float
+    active: bool = True
+    control_ws: Optional[WebSocket] = None
+    survivor_ws: Optional[WebSocket] = None
+
+
+call_sessions: dict[str, CallSession] = {}
+
+# MVP pairs each detection with the single listening survivor app.
+survivor_waiting: list[WebSocket] = []

@@ -23,6 +23,8 @@ class ApiTestCase(unittest.TestCase):
         state.detections.clear()
         state.heatmap = HeatmapState()
         state.manager._clients.clear()
+        state.call_sessions.clear()
+        state.survivor_waiting.clear()
         self.client = TestClient(app)
 
     def _mid_point(self):
@@ -77,6 +79,8 @@ class DetectionTests(ApiTestCase):
         listed = self.client.get("/detection").json()
         self.assertEqual(len(listed), 1)
         self.assertEqual(listed[0]["cell_id"], "A0")
+        self.assertIn("call_session_id", listed[0])
+        self.assertIn(listed[0]["call_session_id"], state.call_sessions)
 
 
 class MetaTests(ApiTestCase):
@@ -138,6 +142,53 @@ class VideoWebSocketTests(ApiTestCase):
                 self.assertEqual(message["type"], "video_frame")
                 self.assertEqual(message["data"]["drone_id"], 1)
                 self.assertEqual(message["data"]["seq"], 0)
+
+
+class CallWebSocketTests(ApiTestCase):
+    def _session(self):
+        session = state.CallSession(
+            session_id="call-1",
+            drone_id=1,
+            cell_id="A0",
+            created_at=0,
+        )
+        state.call_sessions[session.session_id] = session
+        return session
+
+    def test_rejects_unknown_session(self):
+        with self.assertRaises(Exception):
+            with self.client.websocket_connect("/calls/missing/control"):
+                pass
+
+    def test_detection_notifies_waiting_survivor(self):
+        event = {"drone_id": 1, "cell_id": "A0", "rss_dbm": -55.0}
+
+        with self.client.websocket_connect("/survivors/listen") as survivor_ws:
+            response = self.client.post("/detection", json=event)
+            message = survivor_ws.receive_json()
+
+        self.assertEqual(message["type"], "incoming_call")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(message["session_id"], state.call_sessions)
+
+    def test_relays_signaling_message_unchanged(self):
+        self._session()
+        offer = {"type": "offer", "sdp": "test-sdp", "extra": {"value": 1}}
+
+        with self.client.websocket_connect("/calls/call-1/control") as control_ws:
+            with self.client.websocket_connect("/calls/call-1/survivor") as survivor_ws:
+                control_ws.send_json(offer)
+                self.assertEqual(survivor_ws.receive_json(), offer)
+
+    def test_call_end_deactivates_session(self):
+        session = self._session()
+
+        with self.client.websocket_connect("/calls/call-1/control") as control_ws:
+            with self.client.websocket_connect("/calls/call-1/survivor") as survivor_ws:
+                control_ws.send_json({"type": "call-end"})
+                self.assertEqual(survivor_ws.receive_json(), {"type": "call-end"})
+
+        self.assertFalse(session.active)
 
 
 if __name__ == "__main__":
