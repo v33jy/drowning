@@ -5,9 +5,17 @@ from signal_pipeline.fpga_protocol import (
     decode_iq_packet,
     encode_iq_frame,
 )
+from signal_pipeline.fpga_result_protocol import (
+    FpgaResultProtocolError,
+    decode_fpga_result,
+    encode_fpga_result,
+)
 from signal_pipeline.mock_fpga import MockFpgaTransport
 from signal_pipeline.mock_sdr import MockSdrSource
+from signal_pipeline.models import FpgaResult
 from signal_pipeline.pipeline import SignalPipeline
+from signal_pipeline.rtl_sdr import RtlSdrSource
+from signal_pipeline.spi_fpga import SpiFpgaTransport
 
 
 class MockSdrSourceTests(unittest.TestCase):
@@ -84,6 +92,104 @@ class SignalPipelineTests(unittest.TestCase):
         self.assertEqual(second_result.sequence, 1)
         self.assertEqual(first_result.peak_bin, 128)
         self.assertEqual(second_result.peak_bin, 128)
+
+
+class RtlSdrSourceTests(unittest.TestCase):
+    def test_converts_samples_to_integer_iq_values(self) -> None:
+        class FakeSdr:
+            def read_samples(self, count: int):
+                return [0.5 + 0.25j] * count
+
+        source = RtlSdrSource()
+        source._sdr = FakeSdr()
+
+        frame = source.next_frame()
+
+        self.assertEqual(len(frame.samples), 1024)
+        self.assertEqual(frame.samples[0], (16384, 8192))
+        self.assertIsInstance(frame.samples[0][0], int)
+        self.assertIsInstance(frame.samples[0][1], int)
+
+    def test_close_releases_device(self) -> None:
+        class FakeSdr:
+            closed = False
+
+            def close(self) -> None:
+                self.closed = True
+
+        source = RtlSdrSource()
+        fake_sdr = FakeSdr()
+        source._sdr = fake_sdr
+
+        source.close()
+
+        self.assertIsNone(source._sdr)
+        self.assertTrue(fake_sdr.closed)
+
+
+class SpiFpgaTransportTests(unittest.TestCase):
+    def test_rejects_wrong_input_packet_size(self) -> None:
+        transport = SpiFpgaTransport()
+        transport._spi = object()
+
+        with self.assertRaisesRegex(ValueError, "input packet size"):
+            transport.process(b"short")
+
+    def test_processes_fpga_result_packet(self) -> None:
+        expected = FpgaResult(
+            sequence=0,
+            peak_bin=128,
+            peak_power=100.0,
+            target_power=90.0,
+            noise_floor=10.0,
+            rss_dbm=-18.5,
+            detected=True,
+        )
+        result_packet = encode_fpga_result(expected)
+
+        class FakeSpi:
+            def __init__(self) -> None:
+                self.transfer_count = 0
+
+            def xfer2(self, data):
+                self.transfer_count += 1
+                if self.transfer_count == 1:
+                    return [0] * len(data)
+                return list(result_packet)
+
+        transport = SpiFpgaTransport()
+        transport._spi = FakeSpi()
+
+        result = transport.process(bytes(PACKET_SIZE))
+
+        self.assertEqual(result.sequence, expected.sequence)
+        self.assertEqual(result.peak_bin, expected.peak_bin)
+        self.assertTrue(result.detected)
+
+    def test_rejects_out_of_range_result_bin(self) -> None:
+        valid = encode_fpga_result(
+            FpgaResult(0, 128, 1.0, 1.0, 1.0, -10.0, False)
+        )
+        malformed = valid[:7] + (1024).to_bytes(2, "big") + valid[9:]
+
+        with self.assertRaisesRegex(FpgaResultProtocolError, "peak_bin"):
+            decode_fpga_result(malformed)
+
+    def test_close_releases_device(self) -> None:
+        class FakeSpi:
+            closed = False
+
+            def close(self) -> None:
+                self.closed = True
+
+        transport = SpiFpgaTransport()
+        fake_spi = FakeSpi()
+        transport._spi = fake_spi
+
+        transport.close()
+
+        self.assertIsNone(transport._spi)
+        self.assertTrue(fake_spi.closed)
 
 
 if __name__ == "__main__":
