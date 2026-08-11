@@ -76,6 +76,24 @@ INPUT_MODE=mock DETECTION_MODE=rss_threshold SERVER_URL=http://localhost:8001 py
 
 실제 UART 장치를 붙일 땐 `INPUT_MODE=serial`로, 패킷 포맷이 맞는지 먼저 확인하고 싶으면
 `INPUT_MODE=raw_debug`로 실행하면 됩니다. 시리얼 연결이 끊겨도 자동으로 재연결을 시도합니다.
+
+RTL-SDR과 FPGA 신호처리 파이프라인은 다음처럼 실행합니다. SDR 또는 FPGA만 mock으로 두어
+구간별로 확인할 수도 있습니다.
+
+```bash
+pip install -r requirements-hardware.txt
+
+# 전체 mock
+INPUT_MODE=signal_pipeline SDR_MODE=mock FPGA_MODE=mock \
+  DETECTION_MODE=rss_threshold python3 main.py
+
+# 실제 RTL-SDR + 실제 FPGA SPI
+INPUT_MODE=signal_pipeline SDR_MODE=real FPGA_MODE=real \
+  DETECTION_MODE=rss_threshold python3 main.py
+```
+
+라즈베리파이 측 RTL-SDR 및 SPI 드라이버는 구현되어 있습니다. 다만 실제 연결에는 FPGA RTL의
+SPI slave와 연산 완료 READY 처리가 추가로 필요합니다.
 자세한 환경변수는 `pi/gateway/README.md` 참고.
 
 카메라 영상을 같이 스트리밍하려면 라즈베리파이에서 별도 터미널로:
