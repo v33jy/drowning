@@ -7,6 +7,8 @@
 
 - Mock 테스트 데이터 생성 — 강남역→신논현역 접근 시나리오를 재현해서 하드웨어 없이도
   `DETECTION_MODE=rss_threshold` 탐지 트리거까지 확인 가능
+- RTL-SDR IQ 수신 및 FPGA SPI 전송 파이프라인
+- SDR과 FPGA를 각각 mock 또는 실제 장치로 선택 가능
 - UART 데이터 수신 및 파싱, 연결이 끊기면(케이블 접촉 불량 등) 죽지 않고 자동 재연결
 - 텔레메트리·신호세기 서버 전송, 실패 시 자동 재시도
 - 탐지(survivor detection) 이벤트 전송 — FPGA 인터럽트 또는 RSS 임계값, 둘 중 선택 가능
@@ -28,6 +30,15 @@ pip install -r requirements.txt
 # 하드웨어 없이 mock 데이터로 테스트
 INPUT_MODE=mock SERVER_URL=http://127.0.0.1:8001 python3 main.py
 
+# 신호처리 파이프라인 전체 mock
+INPUT_MODE=signal_pipeline SDR_MODE=mock FPGA_MODE=mock \
+  DETECTION_MODE=rss_threshold python3 main.py
+
+# 실제 RTL-SDR과 FPGA SPI 사용
+pip install -r requirements-hardware.txt
+INPUT_MODE=signal_pipeline SDR_MODE=real FPGA_MODE=real \
+  DETECTION_MODE=rss_threshold python3 main.py
+
 # 실제 UART 장치 연결
 INPUT_MODE=serial SERIAL_PORT=/dev/ttyUSB0 BAUD_RATE=115200 \
   SERVER_URL=http://127.0.0.1:8001 python3 main.py
@@ -41,7 +52,16 @@ INPUT_MODE=raw_debug SERIAL_PORT=/dev/ttyUSB0 python3 main.py
 | 변수 | 기본값 | 설명 |
 |---|---|---|
 | `GATEWAY_ID` | `gateway-01` | 게이트웨이 식별 이름 |
-| `INPUT_MODE` | `mock` | `mock` / `serial` / `raw_debug` |
+| `INPUT_MODE` | `mock` | `mock` / `signal_pipeline` / `serial` / `raw_debug` |
+| `SDR_MODE` | `mock` | `mock` / `real` |
+| `SDR_SAMPLE_RATE_HZ` | `2400000` | RTL-SDR sample rate(Hz) |
+| `SDR_CENTER_FREQUENCY_HZ` | `915000000` | RTL-SDR 중심 주파수(Hz) |
+| `SDR_GAIN` | `auto` | RTL-SDR gain (`auto` 또는 숫자) |
+| `FPGA_MODE` | `mock` | `mock` / `real` |
+| `SPI_BUS` | `0` | FPGA SPI bus 번호 |
+| `SPI_DEVICE` | `0` | FPGA SPI device 번호 |
+| `SPI_MAX_SPEED_HZ` | `1000000` | FPGA SPI 최대 속도(Hz) |
+| `SPI_MODE` | `0` | FPGA SPI mode |
 | `SERIAL_PORT` | `/dev/ttyUSB0` | UART 포트 |
 | `BAUD_RATE` | `115200` | UART 속도 |
 | `SERVER_URL` | `http://127.0.0.1:8001` | 서버 base URL (경로 접미사 없이) |
@@ -68,5 +88,7 @@ python3 -m unittest discover -s tests
 - `DETECTION_MODE=fpga`가 최종 설계(FPGA가 신호를 식별해 인터럽트를 주면 그걸 그대로 전달)지만,
   FPGA 인터페이스가 아직 확정되지 않아 `check_fpga_detection()`은 자리표시자 상태입니다.
   그 전까지 시연이 필요하면 `DETECTION_MODE=rss_threshold`로 전환해서 쓰면 됩니다.
+- Raspberry Pi 측 `RtlSdrSource`와 `SpiFpgaTransport`는 구현되어 있습니다. 실제 종단 간 연결에는
+  FPGA RTL의 SPI slave와 연산 완료 READY 처리가 필요합니다.
 - 패킷 포맷(필드 개수/순서)은 실제 HW와 확정된 스펙이 아닙니다. 실기기 연결 후
   `INPUT_MODE=raw_debug`로 먼저 원본을 확인하고, 다르면 `packet_parser.py`만 고치면 됩니다.
