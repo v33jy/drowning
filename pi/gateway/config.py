@@ -16,8 +16,23 @@ def get_bool_env(name: str, default: bool) -> bool:
 class Settings:
     gateway_id: str = os.getenv("GATEWAY_ID", "gateway-01")
 
-    # mock: fake data / serial: real UART / raw_debug: print raw lines only
+    # mock: fake data / signal_pipeline: SDR→FPGA / serial: UART / raw_debug: print
     input_mode: str = os.getenv("INPUT_MODE", "mock")
+
+    sdr_mode: str = os.getenv("SDR_MODE", "mock")
+    sdr_sample_rate_hz: int = int(os.getenv("SDR_SAMPLE_RATE_HZ", "2400000"))
+    sdr_center_frequency_hz: int = int(
+        os.getenv("SDR_CENTER_FREQUENCY_HZ", "915000000")
+    )
+    sdr_gain: str = os.getenv("SDR_GAIN", "auto")
+
+    fpga_mode: str = os.getenv("FPGA_MODE", "mock")
+    spi_bus: int = int(os.getenv("SPI_BUS", "0"))
+    spi_device: int = int(os.getenv("SPI_DEVICE", "0"))
+    spi_max_speed_hz: int = int(
+        os.getenv("SPI_MAX_SPEED_HZ", "1000000")
+    )
+    spi_mode: int = int(os.getenv("SPI_MODE", "0"))
 
     serial_port: str = os.getenv("SERIAL_PORT", "/dev/ttyUSB0")
     baud_rate: int = int(os.getenv("BAUD_RATE", "115200"))

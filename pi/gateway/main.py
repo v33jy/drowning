@@ -7,12 +7,15 @@ from typing import Optional
 from client import GatewayClient, extract_drone_id
 from config import settings
 from packet_parser import PacketParseError, parse_packet
+from signal_pipeline.factory import create_fpga_transport, create_sdr_source
+from signal_pipeline.pipeline import SignalPipeline
 
 # Gangnam Station -> Sinnonhyeon Station exit 6 — same coordinates/RSS
 # formula as scenario.py, for a consistent demo scenario.
 _START_LAT, _START_LNG = 37.4979, 127.0276
 _TARGET_LAT, _TARGET_LNG = 37.5044, 127.0248
 _APPROACH_STEPS = 30
+_SIGNAL_PIPELINE_MODES = ("signal_pipeline", "signal_mock")
 
 
 def _build_packet(latitude: float, longitude: float, rssi: int, battery: int) -> str:
@@ -49,6 +52,38 @@ def generate_mock_packets() -> Iterator[str]:
         rssi = -40 + random.randint(-3, 0)
         yield _build_packet(_TARGET_LAT, _TARGET_LNG, rssi, int(battery))
         time.sleep(settings.send_interval)
+
+
+def generate_signal_pipeline_packets() -> Iterator[str]:
+    """Generate gateway packets from the configured SDR/FPGA pipeline."""
+    pipeline = SignalPipeline(
+        sdr_source=create_sdr_source(),
+        fpga_transport=create_fpga_transport(),
+    )
+    battery = 100.0
+    step = 1
+
+    try:
+        while True:
+            t = min(step / _APPROACH_STEPS, 1.0)
+            latitude = _START_LAT + (_TARGET_LAT - _START_LAT) * t
+            longitude = _START_LNG + (_TARGET_LNG - _START_LNG) * t
+            drain = 0.25 if step <= _APPROACH_STEPS else 0.05
+            battery = max(10.0, battery - drain)
+
+            result = pipeline.process_next_frame()
+            rssi = int(round(result.rss_dbm))
+            print(
+                f"[signal pipeline] sequence={result.sequence} "
+                f"peak_bin={result.peak_bin} rss={result.rss_dbm:.2f}dBm "
+                f"detected={result.detected}"
+            )
+
+            yield _build_packet(latitude, longitude, rssi, int(battery))
+            step += 1
+            time.sleep(settings.send_interval)
+    finally:
+        pipeline.close()
 
 
 def _read_serial_lines() -> Iterator[str]:
@@ -121,7 +156,7 @@ def run_raw_debug() -> None:
 
 
 def get_packet_source() -> Iterator[str]:
-    """Pick mock or UART input based on settings."""
+    """Pick mock, signal pipeline, or UART input based on settings."""
 
     mode = settings.input_mode.lower()
 
@@ -129,12 +164,23 @@ def get_packet_source() -> Iterator[str]:
         print("[input mode] mock test data")
         return generate_mock_packets()
 
+    if mode in _SIGNAL_PIPELINE_MODES:
+        print("[input mode] configurable SDR -> FPGA signal pipeline")
+        return generate_signal_pipeline_packets()
+
     if mode == "serial":
         print("[input mode] UART serial data")
         return read_serial_packets()
 
     raise ValueError(
         f"Unsupported INPUT_MODE: {settings.input_mode}"
+    )
+
+
+def uses_rss_detection() -> bool:
+    return (
+        settings.detection_mode.lower() == "rss_threshold"
+        or settings.input_mode.lower() in _SIGNAL_PIPELINE_MODES
     )
 
 
@@ -221,6 +267,8 @@ def main() -> None:
         cooldown_sec=settings.detection_cooldown_sec,
     )
 
+    packet_source = None
+
     try:
         packet_source = get_packet_source()
 
@@ -246,7 +294,7 @@ def main() -> None:
 
             client.send_signal(drone_id, rssi)
 
-            if settings.detection_mode.lower() == "rss_threshold":
+            if uses_rss_detection():
                 if rss_detector.check(drone_id, rssi):
                     _try_send_detection(client, drone_id, cell_id, rssi)
             else:
@@ -262,6 +310,10 @@ def main() -> None:
         print(f"\n[fatal error] {error}")
 
     finally:
+        if packet_source is not None:
+            close = getattr(packet_source, "close", None)
+            if close is not None:
+                close()
         client.close()
         print("[stopped] gateway connections closed.")
 

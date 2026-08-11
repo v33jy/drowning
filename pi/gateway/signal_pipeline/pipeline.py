@@ -1,7 +1,15 @@
 from signal_pipeline.fpga_protocol import encode_iq_frame
-from signal_pipeline.mock_fpga import MockFpgaTransport
-from signal_pipeline.mock_sdr import MockSdrSource
-from signal_pipeline.models import FpgaResult
+from typing import Protocol
+
+from signal_pipeline.models import FpgaResult, IQFrame
+
+
+class SdrSource(Protocol):
+    def next_frame(self) -> IQFrame: ...
+
+
+class FpgaTransport(Protocol):
+    def process(self, packet: bytes) -> FpgaResult: ...
 
 
 class SignalPipeline:
@@ -17,8 +25,8 @@ class SignalPipeline:
 
     def __init__(
         self,
-        sdr_source: MockSdrSource,
-        fpga_transport: MockFpgaTransport,
+        sdr_source: SdrSource,
+        fpga_transport: FpgaTransport,
     ) -> None:
         self.sdr_source = sdr_source
         self.fpga_transport = fpga_transport
@@ -40,3 +48,9 @@ class SignalPipeline:
             )
 
         return result
+
+    def close(self) -> None:
+        for component in (self.sdr_source, self.fpga_transport):
+            close = getattr(component, "close", None)
+            if close is not None:
+                close()
