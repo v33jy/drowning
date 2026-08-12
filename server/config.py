@@ -21,4 +21,6 @@ MAX_DETECTIONS: int = 50
 # Raw RSS measurements retained for search-history analysis. This remains
 # in-memory for the MVP, but is deliberately bounded so a long-running server
 # cannot grow without limit.
-MAX_SIGNAL_READINGS: int = int(os.getenv("MAX_SIGNAL_READINGS", "10000"))
+MAX_SIGNAL_READINGS: int = max(
+    1, int(os.getenv("MAX_SIGNAL_READINGS", "10000"))
+)

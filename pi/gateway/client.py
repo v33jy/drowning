@@ -1,4 +1,5 @@
 import time
+import uuid
 from typing import Any, Optional
 
 import requests
@@ -69,7 +70,10 @@ class GatewayClient:
         measured_at: Optional[float] = None,
     ) -> bool:
         """Send an RSS reading with the position/time captured for the sample."""
-        payload = {"rss_dbm": rss_dbm}
+        payload = {
+            "measurement_id": str(uuid.uuid4()),
+            "rss_dbm": rss_dbm,
+        }
         if lat is not None and lng is not None:
             payload.update({"lat": lat, "lng": lng})
         if altitude is not None:

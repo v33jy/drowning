@@ -12,6 +12,7 @@ class DroneTelemetry(BaseModel):
 
 
 class SignalReading(BaseModel):
+    measurement_id: Optional[str] = Field(default=None, min_length=1, max_length=64)
     rss_dbm: float = Field(le=0, description="Received signal strength in dBm (negative value)")
     lat: Optional[float] = Field(default=None, ge=-90, le=90)
     lng: Optional[float] = Field(default=None, ge=-180, le=180)
