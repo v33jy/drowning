@@ -14,6 +14,7 @@ import asyncio
 import math
 import os
 import random
+import time
 
 import httpx
 
@@ -57,7 +58,13 @@ class DroneSim:
         cx, cy = (LAT_MIN + LAT_MAX) / 2, (LNG_MIN + LNG_MAX) / 2
         dist = math.sqrt((self.lat - cx) ** 2 + (self.lng - cy) ** 2)
         rss_dbm = -40 - dist * 600 + random.uniform(-5, 5)
-        return {"rss_dbm": round(max(-100, min(-40, rss_dbm)), 1)}
+        return {
+            "rss_dbm": round(max(-100, min(-40, rss_dbm)), 1),
+            "lat": round(self.lat, 6),
+            "lng": round(self.lng, 6),
+            "altitude": round(self.altitude, 1),
+            "measured_at": time.time(),
+        }
 
 
 async def run(num_drones: int, trigger_detect: bool):

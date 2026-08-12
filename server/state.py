@@ -25,6 +25,13 @@ heatmap = HeatmapState()
 
 detections: collections.deque[dict] = collections.deque(maxlen=config.MAX_DETECTIONS)
 
+# Source-of-truth RSS observations. The heatmap is only a derived, latest-value
+# view; retaining the original position/time samples enables later repeat,
+# trend, and revisit analysis without changing today's app payloads.
+signal_readings: collections.deque[dict] = collections.deque(
+    maxlen=config.MAX_SIGNAL_READINGS
+)
+
 manager = ConnectionManager()
 
 lock = asyncio.Lock()

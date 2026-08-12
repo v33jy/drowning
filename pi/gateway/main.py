@@ -284,6 +284,10 @@ def main() -> None:
 
             print(f"[parsed] {telemetry}")
 
+            # Capture sample time before the telemetry HTTP round trip so the
+            # RSS observation reflects when this packet was received.
+            measured_at = time.time()
+
             response = client.send_telemetry(telemetry)
             if response is None:
                 continue
@@ -292,7 +296,14 @@ def main() -> None:
             cell_id = response.get("cell_id")
             rssi = telemetry["rssi"]
 
-            client.send_signal(drone_id, rssi)
+            client.send_signal(
+                drone_id,
+                rssi,
+                lat=float(telemetry["latitude"]),
+                lng=float(telemetry["longitude"]),
+                altitude=float(telemetry.get("altitude", 0.0)),
+                measured_at=measured_at,
+            )
 
             if uses_rss_detection():
                 if rss_detector.check(drone_id, rssi):

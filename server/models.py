@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class DroneTelemetry(BaseModel):
@@ -13,6 +13,20 @@ class DroneTelemetry(BaseModel):
 
 class SignalReading(BaseModel):
     rss_dbm: float = Field(le=0, description="Received signal strength in dBm (negative value)")
+    lat: Optional[float] = Field(default=None, ge=-90, le=90)
+    lng: Optional[float] = Field(default=None, ge=-180, le=180)
+    altitude: Optional[float] = Field(default=None, ge=0)
+    measured_at: Optional[float] = Field(
+        default=None,
+        ge=0,
+        description="Unix timestamp recorded when the RSS sample was measured",
+    )
+
+    @model_validator(mode="after")
+    def coordinates_are_a_pair(self) -> "SignalReading":
+        if (self.lat is None) != (self.lng is None):
+            raise ValueError("lat and lng must be provided together")
+        return self
 
 
 class DetectionEvent(BaseModel):

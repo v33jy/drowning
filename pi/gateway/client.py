@@ -58,9 +58,25 @@ class GatewayClient:
 
         return self._post_with_retry(f"/drones/{drone_id}/telemetry", payload)
 
-    def send_signal(self, drone_id: int, rss_dbm: float) -> bool:
-        """Send an RSS reading to the server."""
-        result = self._post_with_retry(f"/drones/{drone_id}/signal", {"rss_dbm": rss_dbm})
+    def send_signal(
+        self,
+        drone_id: int,
+        rss_dbm: float,
+        *,
+        lat: Optional[float] = None,
+        lng: Optional[float] = None,
+        altitude: Optional[float] = None,
+        measured_at: Optional[float] = None,
+    ) -> bool:
+        """Send an RSS reading with the position/time captured for the sample."""
+        payload = {"rss_dbm": rss_dbm}
+        if lat is not None and lng is not None:
+            payload.update({"lat": lat, "lng": lng})
+        if altitude is not None:
+            payload["altitude"] = altitude
+        if measured_at is not None:
+            payload["measured_at"] = measured_at
+        result = self._post_with_retry(f"/drones/{drone_id}/signal", payload)
         return result is not None
 
     def send_detection(self, drone_id: int, cell_id: Optional[str], rss_dbm: float) -> Optional[dict]:

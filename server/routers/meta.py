@@ -25,6 +25,7 @@ async def get_state() -> dict:
     return {
         "drones": list(state.drone_states.values()),
         "heatmap": state.heatmap.snapshot(),
+        "signal_readings": list(state.signal_readings),
         "detections": list(state.detections),
     }
 
