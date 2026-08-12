@@ -11,14 +11,12 @@ import '../../core/widgets/status_chip.dart';
 import '../../core/widgets/severity.dart';
 import '../../models/detection_event.dart';
 import '../../models/grid_cell.dart';
-import '../../models/heatmap_cell.dart';
 import '../detection/detection_sheet.dart';
 import '../detection/providers/detection_log_provider.dart';
 import '../log/log_screen.dart';
 import '../settings/settings_screen.dart';
 import 'providers/drones_provider.dart';
 import 'providers/grid_provider.dart';
-import 'providers/heatmap_provider.dart';
 import 'providers/map_focus_provider.dart';
 import 'providers/ws_providers.dart';
 import 'widgets/drone_list_sheet.dart';
@@ -67,10 +65,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     final grid = ref.read(gridDefProvider);
     final cellId = findContainingCellId(grid, point);
     if (cellId == null) return;
-
-    final cell =
-        ref.read(heatmapProvider)[cellId] ?? HeatmapCell.unscanned(cellId);
-    showSearchAreaDetailSheet(context, cell);
+    showSearchAreaDetailSheet(context, cellId);
   }
 
   @override

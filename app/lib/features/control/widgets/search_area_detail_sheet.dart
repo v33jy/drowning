@@ -1,18 +1,35 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../models/heatmap_cell.dart';
+import '../providers/heatmap_provider.dart';
+import 'search_area_guidance.dart';
 
-Future<void> showSearchAreaDetailSheet(
-  BuildContext context,
-  HeatmapCell cell,
-) => AppBottomSheet.show<void>(
-  context: context,
-  maxHeightFraction: 0.62,
-  builder: (_) => SearchAreaDetailSheet(cell: cell),
-);
+Future<void> showSearchAreaDetailSheet(BuildContext context, String cellId) =>
+    AppBottomSheet.show<void>(
+      context: context,
+      maxHeightFraction: 0.62,
+      builder: (_) => _LiveSearchAreaDetail(cellId: cellId),
+    );
+
+class _LiveSearchAreaDetail extends ConsumerWidget {
+  const _LiveSearchAreaDetail({required this.cellId});
+
+  final String cellId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cell = ref.watch(
+      heatmapProvider.select(
+        (cells) => cells[cellId] ?? HeatmapCell.unscanned(cellId),
+      ),
+    );
+    return SearchAreaDetailSheet(cell: cell);
+  }
+}
 
 class SearchAreaDetailSheet extends StatelessWidget {
   const SearchAreaDetailSheet({required this.cell, super.key});
@@ -60,57 +77,6 @@ class SearchAreaDetailSheet extends StatelessWidget {
       ),
     );
   }
-}
-
-class SearchAreaGuidance {
-  const SearchAreaGuidance({
-    required this.statusLabel,
-    required this.reason,
-    required this.action,
-    required this.color,
-    required this.icon,
-  });
-
-  final String statusLabel;
-  final String reason;
-  final String action;
-  final Color color;
-  final IconData icon;
-
-  factory SearchAreaGuidance.fromCell(HeatmapCell cell) =>
-      switch (cell.status) {
-        SearchAreaStatus.unscanned => const SearchAreaGuidance(
-          statusLabel: '미확인',
-          reason: '아직 수색 판단에 필요한 측정이 없습니다.',
-          action: '드론으로 이 구역을 우선 확인하세요.',
-          color: AppColors.offline,
-          icon: Icons.help_outline,
-        ),
-        SearchAreaStatus.scanning => const SearchAreaGuidance(
-          statusLabel: '확인 중',
-          reason: '신호를 수집했지만 반복 확인 기준에 도달하지 않았습니다.',
-          action: '같은 경로를 유지하며 추가 측정하세요.',
-          color: AppColors.primary,
-          icon: Icons.radar,
-        ),
-        SearchAreaStatus.needsRecheck => const SearchAreaGuidance(
-          statusLabel: '재확인 필요',
-          reason: '구조 신호가 같은 구역에서 반복 확인되었습니다.',
-          action: '주변 구역을 재수색하고 현장 확인을 검토하세요.',
-          color: AppColors.warning,
-          icon: Icons.warning_amber_outlined,
-        ),
-      };
-}
-
-String formatLastChecked(DateTime? timestamp, {DateTime? now}) {
-  if (timestamp == null) return '확인 기록 없음';
-  final current = (now ?? DateTime.now()).toUtc();
-  final elapsed = current.difference(timestamp.toUtc());
-  if (elapsed.isNegative || elapsed.inMinutes < 1) return '방금 전';
-  if (elapsed.inHours < 1) return '${elapsed.inMinutes}분 전';
-  if (elapsed.inDays < 1) return '${elapsed.inHours}시간 전';
-  return '${elapsed.inDays}일 전';
 }
 
 class _AreaStatusBadge extends StatelessWidget {

@@ -1,4 +1,5 @@
 import 'package:control_app/features/control/widgets/search_area_detail_sheet.dart';
+import 'package:control_app/features/control/widgets/search_area_guidance.dart';
 import 'package:control_app/models/heatmap_cell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +18,18 @@ void main() {
     expect(guidance.statusLabel, '재확인 필요');
     expect(guidance.reason, contains('반복 확인'));
     expect(guidance.action, contains('재수색'));
+  });
+
+  test('falls back to status guidance for a missing legacy reason', () {
+    final cell = HeatmapCell(
+      cellId: 'A0',
+      colorHex: '#1976D2',
+      status: SearchAreaStatus.scanning,
+    );
+
+    final guidance = SearchAreaGuidance.fromCell(cell);
+
+    expect(guidance.reason, contains('신호를 수집'));
   });
 
   test('formats last checked time for operations', () {
