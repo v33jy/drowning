@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import statistics
 import time
-from collections import deque
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -82,6 +81,15 @@ _STATUS_COLORS = {
 
 
 @dataclass
+class SignalSample:
+    """One RSS observation retained for the live, time-ordered window."""
+
+    measured_at: float
+    drone_id: int
+    rss_dbm: float
+
+
+@dataclass
 class CellSignalSummary:
     """Mutable aggregation state for one search cell.
 
@@ -90,15 +98,9 @@ class CellSignalSummary:
     """
 
     cell_id: str
-    recent_rss: deque[float] = field(
-        default_factory=lambda: deque(maxlen=config.SEARCH_RECENT_WINDOW)
-    )
+    recent_samples: list[SignalSample] = field(default_factory=list)
     drone_ids: set[int] = field(default_factory=set)
     sample_count: int = 0
-    latest_rss_dbm: Optional[float] = None
-    peak_rss_dbm: Optional[float] = None
-    last_updated: Optional[float] = None
-    latest_drone_id: Optional[int] = None
 
     def record(
         self,
@@ -106,19 +108,28 @@ class CellSignalSummary:
         rss_dbm: float,
         measured_at: Optional[float] = None,
     ) -> None:
-        self.recent_rss.append(rss_dbm)
+        timestamp = measured_at if measured_at is not None else time.time()
+        self.recent_samples.append(
+            SignalSample(
+                measured_at=timestamp,
+                drone_id=drone_id,
+                rss_dbm=rss_dbm,
+            )
+        )
+        self.recent_samples.sort(key=lambda sample: sample.measured_at)
+        del self.recent_samples[:-config.SEARCH_RECENT_WINDOW]
         self.drone_ids.add(drone_id)
         self.sample_count += 1
-        self.peak_rss_dbm = (
-            rss_dbm
-            if self.peak_rss_dbm is None
-            else max(self.peak_rss_dbm, rss_dbm)
-        )
-        timestamp = measured_at if measured_at is not None else time.time()
-        if self.last_updated is None or timestamp >= self.last_updated:
-            self.latest_rss_dbm = rss_dbm
-            self.latest_drone_id = drone_id
-            self.last_updated = timestamp
+
+    @property
+    def recent_rss(self) -> list[float]:
+        return [sample.rss_dbm for sample in self.recent_samples]
+
+    @property
+    def latest_sample(self) -> Optional[SignalSample]:
+        if not self.recent_samples:
+            return None
+        return self.recent_samples[-1]
 
     @property
     def representative_rss_dbm(self) -> Optional[float]:
@@ -131,6 +142,12 @@ class CellSignalSummary:
         if not self.recent_rss:
             return None
         return round(statistics.fmean(self.recent_rss), 1)
+
+    @property
+    def peak_rss_dbm(self) -> Optional[float]:
+        if not self.recent_rss:
+            return None
+        return max(self.recent_rss)
 
     @property
     def strong_signal_count(self) -> int:
@@ -156,11 +173,12 @@ class CellSignalSummary:
 
     def to_dict(self) -> dict:
         representative = self.representative_rss_dbm
+        latest = self.latest_sample
         return {
             "cell_id": self.cell_id,
-            "drone_id": self.latest_drone_id,
+            "drone_id": latest.drone_id if latest is not None else None,
             "rss_dbm": representative,
-            "latest_rss_dbm": self.latest_rss_dbm,
+            "latest_rss_dbm": latest.rss_dbm if latest is not None else None,
             "average_rss_dbm": self.average_rss_dbm,
             "peak_rss_dbm": self.peak_rss_dbm,
             "sample_count": self.sample_count,
@@ -169,7 +187,7 @@ class CellSignalSummary:
             "color": _STATUS_COLORS[self.status],
             "status": self.status,
             "status_reason": self.status_reason,
-            "last_updated": self.last_updated,
+            "last_updated": latest.measured_at if latest is not None else None,
         }
 
 

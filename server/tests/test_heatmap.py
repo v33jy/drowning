@@ -95,6 +95,57 @@ class HeatmapStateTests(unittest.TestCase):
         self.assertEqual(cell["drone_id"], 2)
         self.assertEqual(cell["last_updated"], 200.0)
 
+    def test_delayed_old_sample_does_not_evict_recent_strong_signal(self):
+        recent_readings = [
+            *(
+                [config.SEARCH_RECHECK_RSS_DBM]
+                * config.SEARCH_RECHECK_MIN_SAMPLES
+            ),
+            *(
+                [-90.0]
+                * (
+                    config.SEARCH_RECENT_WINDOW
+                    - config.SEARCH_RECHECK_MIN_SAMPLES
+                )
+            ),
+        ]
+        for index, rss_dbm in enumerate(recent_readings):
+            self.heatmap.update(
+                "A0",
+                drone_id=1,
+                rss_dbm=rss_dbm,
+                measured_at=100.0 + index,
+            )
+
+        self.heatmap.update(
+            "A0", drone_id=2, rss_dbm=-100.0, measured_at=1.0
+        )
+
+        cell = next(c for c in self.heatmap.snapshot() if c["cell_id"] == "A0")
+        self.assertEqual(cell["status"], "needs_recheck")
+        self.assertEqual(
+            cell["strong_signal_count"], config.SEARCH_RECHECK_MIN_SAMPLES
+        )
+        self.assertEqual(
+            cell["last_updated"],
+            100.0 + config.SEARCH_RECENT_WINDOW - 1,
+        )
+
+    def test_peak_is_calculated_from_recent_window(self):
+        self.heatmap.update(
+            "A0", drone_id=1, rss_dbm=-40.0, measured_at=1.0
+        )
+        for index in range(config.SEARCH_RECENT_WINDOW):
+            self.heatmap.update(
+                "A0",
+                drone_id=1,
+                rss_dbm=-80.0,
+                measured_at=100.0 + index,
+            )
+
+        cell = next(c for c in self.heatmap.snapshot() if c["cell_id"] == "A0")
+        self.assertEqual(cell["peak_rss_dbm"], -80.0)
+
 
 if __name__ == "__main__":
     unittest.main()
