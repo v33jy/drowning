@@ -51,6 +51,12 @@ class HeatmapCell {
   bool get isUnscanned => status == SearchAreaStatus.unscanned;
   bool get needsRecheck => status == SearchAreaStatus.needsRecheck;
 
+  factory HeatmapCell.unscanned(String cellId) => HeatmapCell(
+    cellId: cellId,
+    colorHex: '#404040',
+    status: SearchAreaStatus.unscanned,
+  );
+
   factory HeatmapCell.fromJson(Map<String, dynamic> json) => HeatmapCell(
     cellId: json['cell_id'] as String,
     colorHex: json['color'] as String,

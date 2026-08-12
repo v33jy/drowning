@@ -70,6 +70,7 @@ class HelpScreen extends StatelessWidget {
             child: Text(
               '회색은 아직 확인되지 않은 구역, 파란색은 확인 중인 구역, '
               '주황색은 구조 신호가 반복되어 추가 확인이 필요한 구역입니다. '
+              '지도에서 구역을 누르면 판정 이유와 권장 조치를 확인할 수 있습니다. '
               '지도 표시는 구조 대상자의 위치를 확정하지 않습니다.',
               style: TextStyle(
                 fontSize: 13,
