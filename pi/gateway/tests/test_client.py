@@ -98,5 +98,35 @@ class SendTelemetryTests(unittest.TestCase):
         self.assertEqual(result, {"cell_id": "A0"})
 
 
+class SendSignalTests(unittest.TestCase):
+    def setUp(self):
+        self.client = GatewayClient(server_url="http://example.test", gateway_id="gw", dry_run=True)
+
+    def tearDown(self):
+        self.client.close()
+
+    @patch("client.uuid.uuid4", return_value="sample-1")
+    def test_posts_sample_position_and_time(self, _mock_uuid):
+        with patch.object(self.client, "_post_with_retry", return_value={"ok": True}) as mock_post:
+            result = self.client.send_signal(
+                3,
+                -61.5,
+                lat=37.5,
+                lng=127.0,
+                altitude=42.0,
+                measured_at=1_700_000_000.0,
+            )
+
+        mock_post.assert_called_once_with("/drones/3/signal", {
+            "measurement_id": "sample-1",
+            "rss_dbm": -61.5,
+            "lat": 37.5,
+            "lng": 127.0,
+            "altitude": 42.0,
+            "measured_at": 1_700_000_000.0,
+        })
+        self.assertTrue(result)
+
+
 if __name__ == "__main__":
     unittest.main()

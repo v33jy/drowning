@@ -19,5 +19,9 @@ async def submit_signal(
     reading: SignalReading,
     drone_id: int = Path(..., ge=1),
 ) -> dict:
-    cell_id = await services.submit_signal(drone_id, reading)
-    return {"ok": True, "cell_id": cell_id}
+    measurement = await services.submit_signal(drone_id, reading)
+    return {
+        "ok": True,
+        "cell_id": measurement["cell_id"],
+        "measurement_id": measurement["measurement_id"],
+    }

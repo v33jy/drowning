@@ -11,12 +11,74 @@ from __future__ import annotations
 import base64
 import time
 import uuid
+from typing import Optional
 
 from fastapi import HTTPException
 
 import state
 from heatmap import latlng_to_cell_id
 from models import DetectionEvent, DroneTelemetry, SignalReading, WsMessage
+
+
+def _resolve_signal_position(
+    reading: SignalReading,
+    drone: Optional[dict],
+) -> tuple[float, float, Optional[float]]:
+    """Resolve the sample's own position, falling back for legacy senders."""
+    if reading.lat is not None:
+        return reading.lat, reading.lng, reading.altitude
+
+    if drone is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "The drone has not sent telemetry and the signal reading "
+                "has no coordinates."
+            ),
+        )
+
+    altitude = (
+        reading.altitude
+        if reading.altitude is not None
+        else drone.get("altitude")
+    )
+    return drone["lat"], drone["lng"], altitude
+
+
+def _signal_measurement(
+    drone_id: int,
+    reading: SignalReading,
+    lat: float,
+    lng: float,
+    altitude: Optional[float],
+    cell_id: str,
+) -> dict:
+    received_at = time.time()
+    return {
+        "measurement_id": reading.measurement_id or str(uuid.uuid4()),
+        "drone_id": drone_id,
+        "rss_dbm": reading.rss_dbm,
+        "lat": lat,
+        "lng": lng,
+        "altitude": altitude,
+        "measured_at": (
+            reading.measured_at
+            if reading.measured_at is not None
+            else received_at
+        ),
+        "received_at": received_at,
+        "cell_id": cell_id,
+    }
+
+
+def _store_signal_measurement(measurement: dict) -> None:
+    """Append one sample while keeping the bounded ID index in sync."""
+    if len(state.signal_readings) == state.signal_readings.maxlen:
+        evicted = state.signal_readings[0]
+        state.signal_readings_by_id.pop(evicted["measurement_id"], None)
+
+    state.signal_readings.append(measurement)
+    state.signal_readings_by_id[measurement["measurement_id"]] = measurement
 
 
 async def submit_telemetry(drone_id: int, telemetry: DroneTelemetry) -> dict:
@@ -32,31 +94,36 @@ async def submit_telemetry(drone_id: int, telemetry: DroneTelemetry) -> dict:
     return entry
 
 
-async def submit_signal(drone_id: int, reading: SignalReading) -> str:
-    """Update the heatmap cell the drone is currently in. Returns the cell_id.
+async def submit_signal(drone_id: int, reading: SignalReading) -> dict:
+    """Store one raw RSS observation and update its derived heatmap cell.
 
-    Why post to /drones/{id}/signal instead of /cells/{id}/signal:
-      The PC already knows the drone_id; computing the cell_id from lat/lng is
-      server-side logic that should not leak into the drone control code.
+    New clients send the position captured with the RSS sample. Legacy clients
+    may omit it, in which case the latest telemetry remains a fallback.
     """
     async with state.lock:
+        if reading.measurement_id is not None:
+            existing = state.signal_readings_by_id.get(reading.measurement_id)
+            if existing is not None:
+                return existing
+
         drone = state.drone_states.get(drone_id)
-        if drone is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Drone {drone_id} has not sent telemetry yet — cell unknown.",
-            )
-        cell_id = drone.get("cell_id")
+        lat, lng, altitude = _resolve_signal_position(reading, drone)
+        cell_id = latlng_to_cell_id(lat, lng)
         if cell_id is None:
             raise HTTPException(
                 status_code=422,
-                detail=f"Drone {drone_id} is outside the configured grid area.",
+                detail="The RSS measurement is outside the configured grid area.",
             )
+
+        measurement = _signal_measurement(
+            drone_id, reading, lat, lng, altitude, cell_id
+        )
+        _store_signal_measurement(measurement)
         state.heatmap.update(cell_id, drone_id, reading.rss_dbm)
         snapshot = state.heatmap.snapshot()
 
     await state.manager.broadcast(WsMessage.heatmap_update(snapshot))
-    return cell_id
+    return measurement
 
 
 async def report_detection(event: DetectionEvent) -> dict:

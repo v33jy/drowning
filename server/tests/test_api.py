@@ -21,6 +21,8 @@ class ApiTestCase(unittest.TestCase):
     def setUp(self):
         state.drone_states.clear()
         state.detections.clear()
+        state.signal_readings.clear()
+        state.signal_readings_by_id.clear()
         state.heatmap = HeatmapState()
         state.manager._clients.clear()
         state.call_sessions.clear()
@@ -59,6 +61,68 @@ class SignalTests(ApiTestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["ok"])
         self.assertIsNotNone(resp.json()["cell_id"])
+        self.assertIn("measurement_id", resp.json())
+
+        stored = state.signal_readings[-1]
+        self.assertEqual(stored["rss_dbm"], -60.0)
+        self.assertEqual(stored["lat"], payload["lat"])
+        self.assertEqual(stored["lng"], payload["lng"])
+        self.assertEqual(stored["altitude"], payload["altitude"])
+        self.assertIsNotNone(stored["measured_at"])
+
+    def test_signal_uses_measurement_coordinates_instead_of_latest_telemetry(self):
+        telemetry = {**self._mid_point(), "altitude": 50.0, "battery": 80}
+        self.client.post("/drones/1/telemetry", json=telemetry)
+        measured_at = 1_700_000_000.0
+        sample = {
+            "rss_dbm": -55.0,
+            "lat": config.LAT_MIN,
+            "lng": config.LNG_MIN,
+            "altitude": 25.0,
+            "measured_at": measured_at,
+        }
+
+        resp = self.client.post("/drones/1/signal", json=sample)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["cell_id"], "A0")
+        stored = state.signal_readings[-1]
+        self.assertEqual(stored["cell_id"], "A0")
+        self.assertEqual(stored["measured_at"], measured_at)
+        self.assertEqual(stored["altitude"], 25.0)
+
+    def test_signal_with_coordinates_does_not_require_prior_telemetry(self):
+        resp = self.client.post("/drones/1/signal", json={
+            "rss_dbm": -60.0,
+            **self._mid_point(),
+            "measured_at": 1_700_000_000.0,
+        })
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(state.signal_readings), 1)
+
+    def test_signal_rejects_partial_coordinates(self):
+        resp = self.client.post("/drones/1/signal", json={
+            "rss_dbm": -60.0,
+            "lat": self._mid_point()["lat"],
+        })
+        self.assertEqual(resp.status_code, 422)
+
+    def test_retried_measurement_is_stored_only_once(self):
+        sample = {
+            "measurement_id": "sample-1",
+            "rss_dbm": -60.0,
+            **self._mid_point(),
+            "measured_at": 1_700_000_000.0,
+        }
+
+        first = self.client.post("/drones/1/signal", json=sample)
+        retried = self.client.post("/drones/1/signal", json=sample)
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(retried.status_code, 200)
+        self.assertEqual(first.json(), retried.json())
+        self.assertEqual(len(state.signal_readings), 1)
 
     def test_signal_outside_grid_returns_422(self):
         payload = {"lat": config.LAT_MIN - 1, "lng": config.LNG_MIN - 1, "altitude": 50.0, "battery": 80}
@@ -95,6 +159,7 @@ class MetaTests(ApiTestCase):
         body = resp.json()
         self.assertIn("drones", body)
         self.assertIn("heatmap", body)
+        self.assertIn("signal_readings", body)
         self.assertIn("detections", body)
 
     def test_heatmap_grid_cell_count(self):
