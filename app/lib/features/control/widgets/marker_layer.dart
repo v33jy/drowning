@@ -6,6 +6,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/severity.dart';
 import '../../../models/drone_state.dart';
 import '../providers/drones_provider.dart';
+import 'drone_icon.dart';
 
 Severity droneSeverity(DroneState d) {
   if (d.status == 'lost') return Severity.offline;
@@ -19,11 +20,11 @@ Severity droneSeverity(DroneState d) {
 /// two used to be computed independently (severity from battery, label from
 /// `status`), which could show "정상" in red when battery was critical.
 String droneStatusLabel(DroneState d) => switch (droneSeverity(d)) {
-      Severity.offline => 'Offline',
-      Severity.danger => '위험',
-      Severity.warning => '주의',
-      Severity.ok => '정상',
-    };
+  Severity.offline => 'Offline',
+  Severity.danger => '위험',
+  Severity.warning => '주의',
+  Severity.ok => '정상',
+};
 
 /// Drone markers only — rebuilds when [dronesProvider] changes, independent
 /// of the FlutterMap widget itself (map position/zoom survives untouched).
@@ -58,7 +59,7 @@ class _DroneMarkerIcon extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.airplanemode_active, color: color, size: 26),
+        DroneIcon(color: color, size: 28),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
           decoration: BoxDecoration(

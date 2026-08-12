@@ -11,6 +11,7 @@ void main() {
     rssDbm: -41.5,
     timestamp: DateTime.now().millisecondsSinceEpoch / 1000,
     detectionId: 'test-detection',
+    callSessionId: 'test-call',
   );
 
   Future<void> pumpSheet(WidgetTester tester) async {
@@ -36,6 +37,7 @@ void main() {
     await pumpSheet(tester);
 
     expect(find.text('구조 완료'), findsOneWidget);
+    expect(find.text('전화 연결'), findsOneWidget);
     expect(find.byIcon(Icons.flag_outlined), findsOneWidget);
     expect(find.byIcon(Icons.remove_circle_outline), findsOneWidget);
   });

@@ -7,13 +7,12 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/widgets/connection_badge.dart';
 import '../../core/widgets/queue_chip.dart';
-import '../../core/widgets/status_chip.dart';
-import '../../core/widgets/severity.dart';
 import '../../models/detection_event.dart';
 import '../../models/grid_cell.dart';
 import '../detection/detection_sheet.dart';
 import '../detection/providers/detection_log_provider.dart';
 import '../log/log_screen.dart';
+import '../log/providers/combined_log_provider.dart';
 import '../settings/settings_screen.dart';
 import 'providers/drones_provider.dart';
 import 'providers/grid_provider.dart';
@@ -70,6 +69,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Keep the operational timeline active while the control screen is open,
+    // not only after the operator visits the log screen.
+    ref.watch(combinedLogProvider);
     // Auto-pan to the first drone once telemetry starts arriving.
     ref.listen(dronesProvider, (previous, next) {
       if (!_centeredOnFirstDrone && next.isNotEmpty) {
@@ -135,18 +137,6 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                     final status = ref.watch(wsConnectionProvider);
                     return ConnectionBadge(
                       status: status.value ?? ConnectionStatus.connecting,
-                    );
-                  },
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Consumer(
-                  builder: (context, ref, _) {
-                    final count = ref.watch(
-                      dronesProvider.select((d) => d.length),
-                    );
-                    return StatusChip(
-                      severity: Severity.ok,
-                      label: '드론 $count대',
                     );
                   },
                 ),

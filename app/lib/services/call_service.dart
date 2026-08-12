@@ -37,6 +37,14 @@ class CallService extends StateNotifier<CallState> {
     if (_disposed || state.status != CallStatus.idle) return;
     state = CallState(CallStatus.connecting, sessionId: sessionId);
 
+    if (Config.demoMode) {
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      if (!_disposed && state.sessionId == sessionId) {
+        state = CallState(CallStatus.active, sessionId: sessionId);
+      }
+      return;
+    }
+
     final permission = await Permission.microphone.request();
     if (!permission.isGranted) {
       debugPrint('마이크 권한이 없어 통화를 시작할 수 없습니다.');
