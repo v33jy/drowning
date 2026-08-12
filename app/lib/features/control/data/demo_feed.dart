@@ -198,6 +198,8 @@ class DemoFeed {
             'rss_dbm': _rssAt(_targetLat, _targetLng),
             'timestamp': DateTime.now().millisecondsSinceEpoch / 1000,
             'detection_id': 'demo-${DateTime.now().millisecondsSinceEpoch}',
+            'call_session_id':
+                'demo-call-${DateTime.now().millisecondsSinceEpoch}',
             'stream_url': null,
           });
         }

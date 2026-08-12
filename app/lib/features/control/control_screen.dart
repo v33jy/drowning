@@ -7,14 +7,15 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/widgets/connection_badge.dart';
 import '../../core/widgets/queue_chip.dart';
-import '../../core/widgets/status_chip.dart';
-import '../../core/widgets/severity.dart';
 import '../../models/detection_event.dart';
+import '../../models/grid_cell.dart';
 import '../detection/detection_sheet.dart';
 import '../detection/providers/detection_log_provider.dart';
 import '../log/log_screen.dart';
+import '../log/providers/combined_log_provider.dart';
 import '../settings/settings_screen.dart';
 import 'providers/drones_provider.dart';
+import 'providers/grid_provider.dart';
 import 'providers/map_focus_provider.dart';
 import 'providers/ws_providers.dart';
 import 'widgets/drone_list_sheet.dart';
@@ -22,6 +23,7 @@ import 'widgets/heatmap_painter.dart';
 import 'widgets/help_screen.dart';
 import 'widgets/marker_layer.dart';
 import 'widgets/offline_banner.dart';
+import 'widgets/search_area_detail_sheet.dart';
 
 enum _ControlMenuItem { log, help, settings }
 
@@ -58,8 +60,18 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     }
   }
 
+  void _openSearchAreaDetail(LatLng point) {
+    final grid = ref.read(gridDefProvider);
+    final cellId = findContainingCellId(grid, point);
+    if (cellId == null) return;
+    showSearchAreaDetailSheet(context, cellId);
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Keep the operational timeline active while the control screen is open,
+    // not only after the operator visits the log screen.
+    ref.watch(combinedLogProvider);
     // Auto-pan to the first drone once telemetry starts arriving.
     ref.listen(dronesProvider, (previous, next) {
       if (!_centeredOnFirstDrone && next.isNotEmpty) {
@@ -71,7 +83,10 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     // 큐가 "비어있음 → 있음"으로 바뀔 때만 자동으로 연다. 이미 최소화된 채로
     // 대기 중인 상태에서 새 탐지가 추가되는 건(길이만 증가) 자동으로 다시 열지
     // 않는다 — 큐 칩 숫자만 올라간다.
-    ref.listen<List<DetectionEvent>>(pendingDetectionQueueProvider, (previous, next) {
+    ref.listen<List<DetectionEvent>>(pendingDetectionQueueProvider, (
+      previous,
+      next,
+    ) {
       final wasEmpty = previous == null || previous.isEmpty;
       if (wasEmpty && next.isNotEmpty && !_detectionSheetOpen) {
         _openDetectionSheet(next.first);
@@ -82,7 +97,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     ref.listen(mapFocusRequestProvider, (previous, next) {
       if (next != null) {
         _mapController.move(next, 16);
-        Future.microtask(() => ref.read(mapFocusRequestProvider.notifier).state = null);
+        Future.microtask(
+          () => ref.read(mapFocusRequestProvider.notifier).state = null,
+        );
       }
     });
 
@@ -91,10 +108,13 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
         children: [
           FlutterMap(
             mapController: _mapController,
-            options: const MapOptions(
-              initialCenter: LatLng(37.5012, 127.0262), // 강남↔신논현 중간
+            options: MapOptions(
+              initialCenter: const LatLng(37.5012, 127.0262), // 강남↔신논현 중간
               initialZoom: 15,
-              interactionOptions: InteractionOptions(flags: InteractiveFlag.all),
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.all,
+              ),
+              onTap: (_, point) => _openSearchAreaDetail(point),
             ),
             children: [
               TileLayer(
@@ -120,25 +140,23 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                     );
                   },
                 ),
-                const SizedBox(width: AppSpacing.sm),
-                Consumer(
-                  builder: (context, ref, _) {
-                    final count = ref.watch(dronesProvider.select((d) => d.length));
-                    return StatusChip(severity: Severity.ok, label: '드론 $count대');
-                  },
-                ),
                 const Spacer(),
                 Consumer(
                   builder: (context, ref, _) {
-                    final queueCount =
-                        ref.watch(pendingDetectionQueueProvider.select((q) => q.length));
+                    final queueCount = ref.watch(
+                      pendingDetectionQueueProvider.select((q) => q.length),
+                    );
                     return QueueChip(
                       count: queueCount,
                       onTap: _detectionSheetOpen
                           ? null
                           : () {
-                              final queue = ref.read(pendingDetectionQueueProvider);
-                              if (queue.isNotEmpty) _openDetectionSheet(queue.first);
+                              final queue = ref.read(
+                                pendingDetectionQueueProvider,
+                              );
+                              if (queue.isNotEmpty) {
+                                _openDetectionSheet(queue.first);
+                              }
                             },
                     );
                   },
@@ -151,7 +169,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                       _ControlMenuItem.help => const HelpScreen(),
                       _ControlMenuItem.settings => const SettingsScreen(),
                     };
-                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => route));
+                    Navigator.of(
+                      context,
+                    ).push(MaterialPageRoute(builder: (_) => route));
                   },
                 ),
               ],
@@ -181,7 +201,11 @@ class _ControlMenuButton extends StatelessWidget {
         color: AppColors.navy,
         shape: BoxShape.circle,
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.16), blurRadius: 6, offset: const Offset(0, 1)),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 6,
+            offset: const Offset(0, 1),
+          ),
         ],
       ),
       child: PopupMenuButton<_ControlMenuItem>(

@@ -20,13 +20,13 @@ enum _LogFilter { all, unresolved }
 enum _StatusFilter { pending, rescued, falseAlarm, alert }
 
 String _statusFilterLabel(_StatusFilter f) => switch (f) {
-      _StatusFilter.pending => '대기',
-      _StatusFilter.rescued => '구조 완료',
-      _StatusFilter.falseAlarm => '오탐',
-      _StatusFilter.alert => '경고',
-    };
+  _StatusFilter.pending => '대기',
+  _StatusFilter.rescued => '구조 완료',
+  _StatusFilter.falseAlarm => '오탐',
+  _StatusFilter.alert => '경고',
+};
 
-/// 기록 — 구 "탐지 이력" + "알림 센터" 통합 화면. 데이터 소스는 하나
+/// 기록 — 수색 활동, 탐지 결과, 장비 경고를 시간순으로 보여주는 화면.
 /// ([combinedLogProvider]/[unresolvedLogProvider]), 세그먼트/필터는 그 위에서
 /// 걸러낼 뿐 별도 상태를 두지 않는다.
 class LogScreen extends ConsumerStatefulWidget {
@@ -40,7 +40,6 @@ class _LogScreenState extends ConsumerState<LogScreen> {
   _LogFilter _filter = _LogFilter.all;
   String _query = '';
   DateTimeRange? _dateRange;
-  final Set<int> _selectedDrones = {};
   final Set<_StatusFilter> _selectedStatuses = {};
   final _searchController = TextEditingController();
 
@@ -54,13 +53,19 @@ class _LogScreenState extends ConsumerState<LogScreen> {
     if (_selectedStatuses.isEmpty) return true;
     return switch (e.type) {
       LogEntryType.detection => switch (e.status!) {
-          DetectionStatus.pending => _selectedStatuses.contains(_StatusFilter.pending),
-          DetectionStatus.rescued => _selectedStatuses.contains(_StatusFilter.rescued),
-          DetectionStatus.falseAlarm => _selectedStatuses.contains(_StatusFilter.falseAlarm),
-        },
-      LogEntryType.batteryLow ||
-      LogEntryType.signalLost =>
+        DetectionStatus.pending => _selectedStatuses.contains(
+          _StatusFilter.pending,
+        ),
+        DetectionStatus.rescued => _selectedStatuses.contains(
+          _StatusFilter.rescued,
+        ),
+        DetectionStatus.falseAlarm => _selectedStatuses.contains(
+          _StatusFilter.falseAlarm,
+        ),
+      },
+      LogEntryType.batteryLow || LogEntryType.signalLost =>
         _selectedStatuses.contains(_StatusFilter.alert),
+      LogEntryType.activity => false,
     };
   }
 
@@ -77,30 +82,39 @@ class _LogScreenState extends ConsumerState<LogScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final base =
-        ref.watch(_filter == _LogFilter.all ? combinedLogProvider : unresolvedLogProvider);
-
-    final availableDrones = base.map((e) => e.droneId).toSet().toList()..sort();
+    final base = ref.watch(
+      _filter == _LogFilter.all ? combinedLogProvider : unresolvedLogProvider,
+    );
 
     final filtered = base.where((e) {
-      if (_query.isNotEmpty && !e.title.toLowerCase().contains(_query.toLowerCase())) {
+      if (_query.isNotEmpty &&
+          !e.title.toLowerCase().contains(_query.toLowerCase())) {
         return false;
       }
       if (_dateRange != null) {
-        final day = DateTime(e.timestamp.year, e.timestamp.month, e.timestamp.day);
-        final start = DateTime(_dateRange!.start.year, _dateRange!.start.month, _dateRange!.start.day);
-        final end = DateTime(_dateRange!.end.year, _dateRange!.end.month, _dateRange!.end.day);
+        final day = DateTime(
+          e.timestamp.year,
+          e.timestamp.month,
+          e.timestamp.day,
+        );
+        final start = DateTime(
+          _dateRange!.start.year,
+          _dateRange!.start.month,
+          _dateRange!.start.day,
+        );
+        final end = DateTime(
+          _dateRange!.end.year,
+          _dateRange!.end.month,
+          _dateRange!.end.day,
+        );
         if (day.isBefore(start) || day.isAfter(end)) return false;
       }
-      if (_selectedDrones.isNotEmpty && !_selectedDrones.contains(e.droneId)) return false;
       if (!_matchesStatus(e)) return false;
       return true;
     }).toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('기록'),
-      ),
+      appBar: AppBar(title: const Text('기록')),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -124,7 +138,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                     style: Theme.of(context).textTheme.bodyMedium,
                     decoration: InputDecoration(
                       prefixIcon: const Icon(Icons.search, size: 20),
-                      hintText: '드론 · 셀 검색',
+                      hintText: '구역 · 활동 검색',
                       suffixIcon: _query.isEmpty
                           ? null
                           : IconButton(
@@ -141,10 +155,14 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                   SegmentedButton<_LogFilter>(
                     segments: const [
                       ButtonSegment(value: _LogFilter.all, label: Text('전체')),
-                      ButtonSegment(value: _LogFilter.unresolved, label: Text('미확인')),
+                      ButtonSegment(
+                        value: _LogFilter.unresolved,
+                        label: Text('조치 필요'),
+                      ),
                     ],
                     selected: {_filter},
-                    onSelectionChanged: (s) => setState(() => _filter = s.first),
+                    onSelectionChanged: (s) =>
+                        setState(() => _filter = s.first),
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   const _FilterGroupLabel('날짜'),
@@ -153,31 +171,14 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                     label: _dateRange == null
                         ? '전체 기간'
                         : '${_dateRange!.start.month}/${_dateRange!.start.day} ~ '
-                            '${_dateRange!.end.month}/${_dateRange!.end.day}',
+                              '${_dateRange!.end.month}/${_dateRange!.end.day}',
                     selected: _dateRange != null,
                     onSelected: (_) => _pickDateRange(),
                     avatarIcon: Icons.calendar_today_outlined,
-                    onDeleted: _dateRange == null ? null : () => setState(() => _dateRange = null),
+                    onDeleted: _dateRange == null
+                        ? null
+                        : () => setState(() => _dateRange = null),
                   ),
-                  if (availableDrones.isNotEmpty) ...[
-                    const SizedBox(height: AppSpacing.md),
-                    const _FilterGroupLabel('드론'),
-                    const SizedBox(height: AppSpacing.xs),
-                    Wrap(
-                      spacing: AppSpacing.sm,
-                      runSpacing: AppSpacing.sm,
-                      children: [
-                        for (final d in availableDrones)
-                          _LogFilterChip(
-                            label: '#$d',
-                            selected: _selectedDrones.contains(d),
-                            onSelected: (sel) => setState(
-                              () => sel ? _selectedDrones.add(d) : _selectedDrones.remove(d),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
                   const SizedBox(height: AppSpacing.md),
                   const _FilterGroupLabel('상태'),
                   const SizedBox(height: AppSpacing.xs),
@@ -190,7 +191,9 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                           label: _statusFilterLabel(s),
                           selected: _selectedStatuses.contains(s),
                           onSelected: (sel) => setState(
-                            () => sel ? _selectedStatuses.add(s) : _selectedStatuses.remove(s),
+                            () => sel
+                                ? _selectedStatuses.add(s)
+                                : _selectedStatuses.remove(s),
                           ),
                         ),
                     ],
@@ -201,7 +204,12 @@ class _LogScreenState extends ConsumerState<LogScreen> {
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                AppSpacing.lg,
+              ),
               child: Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -214,13 +222,24 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                   children: [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.sm),
+                        AppSpacing.lg,
+                        AppSpacing.lg,
+                        AppSpacing.lg,
+                        AppSpacing.sm,
+                      ),
                       child: Row(
                         children: [
-                          Text('탐지 · 알림', style: AppTypography.eyebrow(AppColors.navy)),
+                          Text(
+                            '수색 활동',
+                            style: AppTypography.eyebrow(AppColors.navy),
+                          ),
                           const Spacer(),
-                          Text('총 ${filtered.length}건',
-                              style: AppTypography.eyebrow(AppColors.textSecondary)),
+                          Text(
+                            '총 ${filtered.length}건',
+                            style: AppTypography.eyebrow(
+                              AppColors.textSecondary,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -231,18 +250,30 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.inbox_outlined,
-                                      size: 32, color: AppColors.textSecondary),
+                                  const Icon(
+                                    Icons.inbox_outlined,
+                                    size: 32,
+                                    color: AppColors.textSecondary,
+                                  ),
                                   const SizedBox(height: AppSpacing.sm),
-                                  Text('기록 없음', style: Theme.of(context).textTheme.bodyMedium),
+                                  Text(
+                                    '기록 없음',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodyMedium,
+                                  ),
                                 ],
                               ),
                             )
                           : ListView.separated(
-                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.lg,
+                              ),
                               itemCount: filtered.length,
-                              separatorBuilder: (_, _) => const Divider(height: 1),
-                              itemBuilder: (context, i) => _LogTile(entry: filtered[i]),
+                              separatorBuilder: (_, _) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (context, i) =>
+                                  _LogTile(entry: filtered[i]),
                             ),
                     ),
                   ],
@@ -298,7 +329,11 @@ class _LogFilterChip extends StatelessWidget {
       backgroundColor: AppColors.surface,
       selectedColor: AppColors.navy,
       side: BorderSide(color: selected ? AppColors.navy : AppColors.border),
-      labelStyle: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: fg),
+      labelStyle: TextStyle(
+        fontSize: 12.5,
+        fontWeight: FontWeight.w600,
+        color: fg,
+      ),
       deleteIconColor: fg,
     );
   }
@@ -313,7 +348,9 @@ class _LogTile extends StatelessWidget {
     final color = entry.severity.resolve(context);
     final icon = _entryIcon(entry);
     return InkWell(
-      onTap: entry.type == LogEntryType.detection ? () => _showDetail(context) : null,
+      onTap: entry.type == LogEntryType.detection
+          ? () => _showDetail(context)
+          : null,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         child: Row(
@@ -324,7 +361,10 @@ class _LogTile extends StatelessWidget {
             Container(
               width: 36,
               height: 36,
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
               child: Icon(icon, size: 18, color: color),
             ),
             const SizedBox(width: AppSpacing.md),
@@ -332,18 +372,30 @@ class _LogTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(entry.title, style: Theme.of(context).textTheme.bodyMedium),
+                  Text(
+                    entry.title,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
                   const SizedBox(height: 2),
-                  Text(_timeLabel(entry.timestamp),
-                      style: Theme.of(context).textTheme.labelSmall),
+                  Text(
+                    _timeLabel(entry.timestamp),
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
                 ],
               ),
             ),
             if (entry.type == LogEntryType.detection) ...[
               const SizedBox(width: AppSpacing.sm),
-              StatusChip(severity: entry.severity, label: _detectionStatusLabel(entry.status!)),
+              StatusChip(
+                severity: entry.severity,
+                label: _detectionStatusLabel(entry.status!),
+              ),
               const SizedBox(width: AppSpacing.xs),
-              const Icon(Icons.chevron_right, color: AppColors.textSecondary, size: 20),
+              const Icon(
+                Icons.chevron_right,
+                color: AppColors.textSecondary,
+                size: 20,
+              ),
             ],
           ],
         ),
@@ -363,20 +415,28 @@ class _LogTile extends StatelessWidget {
 IconData _entryIcon(LogEntry entry) {
   return switch (entry.type) {
     LogEntryType.detection => switch (entry.status!) {
-        DetectionStatus.pending => Icons.warning_amber_outlined,
-        DetectionStatus.rescued => Icons.check_circle_outline,
-        DetectionStatus.falseAlarm => Icons.cancel_outlined,
-      },
+      DetectionStatus.pending => Icons.warning_amber_outlined,
+      DetectionStatus.rescued => Icons.check_circle_outline,
+      DetectionStatus.falseAlarm => Icons.cancel_outlined,
+    },
     LogEntryType.batteryLow => Icons.battery_alert,
     LogEntryType.signalLost => Icons.wifi_off,
+    LogEntryType.activity => switch (entry.activityKind!) {
+      LogActivityKind.searchStarted => Icons.play_circle_outline,
+      LogActivityKind.areaNeedsRecheck => Icons.radar,
+      LogActivityKind.callConnecting => Icons.phone_forwarded_outlined,
+      LogActivityKind.callConnected => Icons.phone_in_talk_outlined,
+      LogActivityKind.callEnded => Icons.call_end_outlined,
+      LogActivityKind.detectionResolved => Icons.task_alt,
+    },
   };
 }
 
 String _detectionStatusLabel(DetectionStatus status) => switch (status) {
-      DetectionStatus.pending => '처리 대기',
-      DetectionStatus.rescued => '구조 완료',
-      DetectionStatus.falseAlarm => '오탐',
-    };
+  DetectionStatus.pending => '처리 대기',
+  DetectionStatus.rescued => '구조 완료',
+  DetectionStatus.falseAlarm => '오탐',
+};
 
 class _DetectionDetailSheet extends ConsumerWidget {
   const _DetectionDetailSheet({required this.entry});
@@ -399,14 +459,20 @@ class _DetectionDetailSheet extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text('드론 #${event.droneId} · Cell ${event.cellId}',
-                    style: Theme.of(context).textTheme.titleMedium),
+                child: Text(
+                  '드론 #${event.droneId} · Cell ${event.cellId}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
               StatusChip(severity: entry.severity, label: statusLabel),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
-          MetricRow(label: 'RSS', value: event.rssDbm.toStringAsFixed(1), unit: 'dBm'),
+          MetricRow(
+            label: 'RSS',
+            value: event.rssDbm.toStringAsFixed(1),
+            unit: 'dBm',
+          ),
           const SizedBox(height: AppSpacing.xs),
           MetricRow(label: '탐지 시각', value: _timeLabel(entry.timestamp)),
           const SizedBox(height: AppSpacing.lg),

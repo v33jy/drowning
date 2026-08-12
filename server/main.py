@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(messa
 
 app = FastAPI(
     title="Disaster Drone Control Server",
-    description="Real-time backend for multi-drone relay rescue system",
+    description="Real-time backend for drone-based search and rescue support",
     version="1.0.0",
 )
 

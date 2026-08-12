@@ -26,7 +26,7 @@ void main() {
     expect(cell.lastUpdated, isNotNull);
   });
 
-  test('keeps legacy active payloads compatible', () {
+  test('maps pre-search-status active payloads to scanning', () {
     final cell = HeatmapCell.fromJson({
       'cell_id': 'A0',
       'color': '#1976D2',
