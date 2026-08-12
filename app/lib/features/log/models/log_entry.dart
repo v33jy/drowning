@@ -37,7 +37,7 @@ class LogEntry {
   final DetectionStatus? status;
   final LogActivityKind? activityKind;
 
-  /// "미확인" 필터에 실제로 의미가 있는 건 탐지뿐이다 — 대기 중이면 조치가
+  /// "조치 필요" 필터에 실제로 의미가 있는 건 탐지뿐이다 — 대기 중이면 조치가
   /// 필요하다는 뜻이고, 처리되면 끝이다. 배터리/신호 경고는 그런 액션 상태가
   /// 없는 정보성 알림이라 읽음/안읽음을 흉내 내지 않는다 — "전체"에서만 보인다.
   bool get isUnresolved =>

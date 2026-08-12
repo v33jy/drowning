@@ -11,10 +11,6 @@ LNG_MAX: float = float(os.getenv("GRID_LNG_MAX", "127.040"))
 GRID_ROWS: int = int(os.getenv("GRID_ROWS", "10"))
 GRID_COLS: int = int(os.getenv("GRID_COLS", "10"))
 
-# Legacy RSS display range retained for scenario and client compatibility.
-RSS_MIN: float = float(os.getenv("RSS_MIN", "-100.0"))
-RSS_MAX: float = float(os.getenv("RSS_MAX", "-40.0"))
-
 # Preliminary search-area classification. These are operational tuning values,
 # not validated probabilities; field tests should calibrate them per radio and
 # environment without requiring code changes.

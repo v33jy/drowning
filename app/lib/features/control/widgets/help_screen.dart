@@ -28,7 +28,7 @@ class HelpScreen extends StatelessWidget {
               children: [
                 _HelpRow(
                   icon: Icons.podcasts,
-                  label: '연결 상태 · 드론 수',
+                  label: '연결 상태',
                   description: '지도 좌측 상단 배지. 서버 연결이 끊기면 자동으로 재연결을 시도합니다.',
                 ),
                 _HelpRow(
@@ -43,9 +43,9 @@ class HelpScreen extends StatelessWidget {
                 ),
                 _HelpRow(
                   icon: Icons.list_alt_outlined,
-                  label: '드론 목록 바',
+                  label: '운용 드론 상태',
                   description:
-                      '화면 하단 고정. 드론을 탭하면 배터리 · 위치 · 실시간 영상 프리뷰가 펼쳐집니다.',
+                      '화면 하단 고정. 패널을 누르면 배터리 · 고도 · 수색 구역 · 실시간 영상이 펼쳐집니다.',
                 ),
               ],
             ),
@@ -111,13 +111,13 @@ class HelpScreen extends StatelessWidget {
               children: [
                 _HelpRow(
                   icon: Icons.filter_alt_outlined,
-                  label: '전체 · 미확인',
-                  description: '미확인은 아직 처리하지 않은 탐지만 모아서 보여줍니다.',
+                  label: '전체 · 조치 필요',
+                  description: '조치 필요는 아직 처리하지 않은 탐지만 모아서 보여줍니다.',
                 ),
                 _HelpRow(
                   icon: Icons.search,
                   label: '검색 · 필터',
-                  description: '드론 · 셀 검색, 날짜 · 드론 · 상태별로 좁혀볼 수 있습니다.',
+                  description: '수색 구역과 활동을 검색하고 날짜 · 상태별로 좁혀볼 수 있습니다.',
                 ),
               ],
             ),

@@ -17,7 +17,7 @@ class DetectionLogEntry {
 }
 
 /// Single source of truth for every detection ever received — the pending
-/// queue (Detection Sheet / QueueChip) and the 기록 screen's 전체/미확인
+/// queue (Detection Sheet / QueueChip) and the 기록 screen's 전체/조치 필요
 /// tabs are both just filtered views over this one list, not separate state.
 class DetectionLogNotifier extends Notifier<List<DetectionLogEntry>> {
   @override
@@ -31,20 +31,28 @@ class DetectionLogNotifier extends Notifier<List<DetectionLogEntry>> {
   void _onMessage(WsMessage msg) {
     if (msg.type != 'detection') return;
     final event = DetectionEvent.fromJson(msg.data as Map<String, dynamic>);
-    state = [...state, DetectionLogEntry(event: event, status: DetectionStatus.pending)];
+    state = [
+      ...state,
+      DetectionLogEntry(event: event, status: DetectionStatus.pending),
+    ];
   }
 
   /// Resolves the entry matching [detectionId] — 구조 완료/오탐 처리 결과 반영.
   void resolve(String detectionId, DetectionStatus status) {
     state = [
       for (final e in state)
-        if (e.event.detectionId == detectionId) e.copyWith(status: status) else e,
+        if (e.event.detectionId == detectionId)
+          e.copyWith(status: status)
+        else
+          e,
     ];
   }
 }
 
 final detectionLogProvider =
-    NotifierProvider<DetectionLogNotifier, List<DetectionLogEntry>>(DetectionLogNotifier.new);
+    NotifierProvider<DetectionLogNotifier, List<DetectionLogEntry>>(
+      DetectionLogNotifier.new,
+    );
 
 /// Pending entries only, in arrival order — what used to be a separate queue
 /// provider. Derived, not duplicated state.

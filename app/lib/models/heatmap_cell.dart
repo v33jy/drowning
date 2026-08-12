@@ -6,6 +6,8 @@ enum SearchAreaStatus {
   needsRecheck;
 
   factory SearchAreaStatus.fromJson(String value) => switch (value) {
+    // Keep compatibility with heatmap payloads produced before the
+    // operational scanning/needs_recheck vocabulary was introduced.
     'scanning' || 'active' => SearchAreaStatus.scanning,
     'needs_recheck' => SearchAreaStatus.needsRecheck,
     _ => SearchAreaStatus.unscanned,

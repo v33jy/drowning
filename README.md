@@ -1,4 +1,4 @@
-# drowning — 다중 드론 릴레이 기반 재난 통신망 복구 및 요구조자 관제 시스템
+# drowning — 단일 드론 기반 재난 수색·요구조자 관제 시스템
 
 [![CI](https://github.com/v33jy/drowning/actions/workflows/ci.yml/badge.svg)](https://github.com/v33jy/drowning/actions/workflows/ci.yml)
 
@@ -9,7 +9,7 @@
 ```
 [드론 시뮬레이터]          [FastAPI 서버]           [Flutter 관제 앱]
   scenario.py   ──HTTP──▶  /drones/{id}/telemetry  ──WebSocket──▶  지도·드론 마커
-  (위치, RSS)   ──HTTP──▶  /drones/{id}/signal     ──WebSocket──▶  전파 히트맵
+  (위치, RSS)   ──HTTP──▶  /drones/{id}/signal     ──WebSocket──▶  구조 탐색 지도
                 ──HTTP──▶  /detection              ──WebSocket──▶  탐지 알림 팝업
                 ──WS(스트림)──▶ /drones/{id}/video  ──WebSocket──▶  팝업 내 영상 프리뷰
 
@@ -19,7 +19,7 @@
 ```
 
 - `server/` — FastAPI 백엔드. 드론 텔레메트리·신호·탐지·영상을 받아서 WebSocket으로 관제 앱에 뿌림
-- `app/` — Flutter 관제 앱 (iPad 대상, 가로 고정). 지도 위에 드론 위치, 전파 히트맵, 탐지 팝업, 영상 프리뷰를 보여줌
+- `app/` — Flutter 관제 앱 (iPad 대상, 가로 고정). 단일 운용 드론의 위치와 상태, 구조 탐색 구역, 탐지 팝업, 음성 연결, 영상 프리뷰 및 수색 활동 기록을 보여줌
 - `pi/` — 실제 라즈베리파이에 올려서 실행하는 코드. `gateway/`(UART로 받은 드론 패킷을 서버로 전달, `scenario.py`가 가짜 데이터로 대신하는 것과 같은 자리)와 `camera_stream.py`(카메라 영상을 서버로 스트리밍)
 
 ## 실행 방법
@@ -109,3 +109,4 @@ python3 camera_stream.py --mock --drone-id 1
 
 ## 참고
 - 서버는 DB 없이 전부 인메모리로 동작합니다. 재시작하면 상태가 초기화됩니다.
+- 현재 관제 UI는 프로젝트 범위에 맞춰 단일 드론 중심으로 구성했습니다. 서버와 앱의 상태 저장 구조는 드론 ID를 유지해 향후 다중 드론 관제로 확장할 수 있습니다.

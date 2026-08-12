@@ -6,8 +6,8 @@ import '../models/log_entry.dart';
 import 'drone_alert_provider.dart';
 import 'search_activity_provider.dart';
 
-/// Single feed backing both 기록 tabs (전체/미확인) — detections and drone
-/// health alerts merged and sorted newest-first, not two separate lists.
+/// Single feed backing both 기록 tabs (전체/조치 필요) — operational
+/// activities, detections, and drone health alerts sorted newest-first.
 final combinedLogProvider = Provider<List<LogEntry>>((ref) {
   final detections = ref.watch(detectionLogProvider);
   final alerts = ref.watch(droneAlertProvider);
