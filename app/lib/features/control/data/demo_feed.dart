@@ -1,10 +1,62 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:flutter/material.dart';
-
 import '../../../models/grid_cell.dart';
 import 'ws_client.dart';
+
+class _DemoCellSummary {
+  _DemoCellSummary(this.cellId);
+
+  final String cellId;
+  final List<double> _recentRss = [];
+  final Set<int> _droneIds = {};
+  int sampleCount = 0;
+  int? latestDroneId;
+  double? latestRssDbm;
+  double? lastUpdated;
+
+  void record(int droneId, double rssDbm, double measuredAt) {
+    _recentRss.add(rssDbm);
+    if (_recentRss.length > DemoFeed.recentWindow) {
+      _recentRss.removeAt(0);
+    }
+    _droneIds.add(droneId);
+    sampleCount += 1;
+    latestDroneId = droneId;
+    latestRssDbm = rssDbm;
+    lastUpdated = measuredAt;
+  }
+
+  Map<String, dynamic> toJson() {
+    final sorted = [..._recentRss]..sort();
+    final middle = sorted.length ~/ 2;
+    final representative = sorted.length.isOdd
+        ? sorted[middle]
+        : (sorted[middle - 1] + sorted[middle]) / 2;
+    final strongCount = _recentRss
+        .where((rss) => rss >= DemoFeed.recheckRssDbm)
+        .length;
+    final needsRecheck = strongCount >= DemoFeed.recheckMinSamples;
+
+    return {
+      'cell_id': cellId,
+      'drone_id': latestDroneId,
+      'rss_dbm': representative,
+      'latest_rss_dbm': latestRssDbm,
+      'average_rss_dbm': _recentRss.reduce((a, b) => a + b) / _recentRss.length,
+      'peak_rss_dbm': _recentRss.reduce(max),
+      'sample_count': sampleCount,
+      'drone_count': _droneIds.length,
+      'strong_signal_count': strongCount,
+      'color': needsRecheck ? '#F57C00' : '#1976D2',
+      'status': needsRecheck ? 'needs_recheck' : 'scanning',
+      'status_reason': needsRecheck
+          ? 'repeated_strong_signal'
+          : 'insufficient_repeated_signal',
+      'last_updated': lastUpdated,
+    };
+  }
+}
 
 /// Canned replay of the same 강남역→신논현역 scenario `scenario.py` /
 /// `pi/gateway`'s mock mode use — for [Config.demoMode], where there's no
@@ -18,17 +70,27 @@ class DemoFeed {
   static const _lngMin = 127.020, _lngMax = 127.040;
   static const _gridRows = 10, _gridCols = 10;
   static const _rssMin = -100.0, _rssMax = -40.0;
+  static const recentWindow = 10;
+  static const recheckRssDbm = -65.0;
+  static const recheckMinSamples = 3;
 
   static const _startLat = 37.4979, _startLng = 127.0276;
   static const _targetLat = 37.5044, _targetLng = 127.0248;
   static const _approachSteps = 30;
 
-  static String _cellId(int row, int col) => '${String.fromCharCode(65 + row)}$col';
+  static String _cellId(int row, int col) =>
+      '${String.fromCharCode(65 + row)}$col';
 
   static String? cellIdFor(double lat, double lng) {
-    if (lat < _latMin || lat > _latMax || lng < _lngMin || lng > _lngMax) return null;
-    final row = (((lat - _latMin) / (_latMax - _latMin)) * _gridRows).floor().clamp(0, _gridRows - 1);
-    final col = (((lng - _lngMin) / (_lngMax - _lngMin)) * _gridCols).floor().clamp(0, _gridCols - 1);
+    if (lat < _latMin || lat > _latMax || lng < _lngMin || lng > _lngMax) {
+      return null;
+    }
+    final row = (((lat - _latMin) / (_latMax - _latMin)) * _gridRows)
+        .floor()
+        .clamp(0, _gridRows - 1);
+    final col = (((lng - _lngMin) / (_lngMax - _lngMin)) * _gridCols)
+        .floor()
+        .clamp(0, _gridCols - 1);
     return _cellId(row, col);
   }
 
@@ -54,32 +116,22 @@ class DemoFeed {
     return (-40.0 - dist * 3000).clamp(_rssMin, _rssMax);
   }
 
-  static String _rssToColorHex(double rssDbm) {
-    final ratio = ((rssDbm - _rssMin) / (_rssMax - _rssMin)).clamp(0.0, 1.0);
-    final hue = (1.0 - ratio) * 240.0;
-    final color = HSVColor.fromAHSV(1.0, hue, 1.0, 1.0).toColor();
-    String hex(int v) => v.toRadixString(16).padLeft(2, '0').toUpperCase();
-    return '#${hex((color.r * 255).round())}${hex((color.g * 255).round())}${hex((color.b * 255).round())}';
-  }
-
   /// Every scanned cell along the drone's path so far — unscanned ones are
   /// simply omitted, matching how a fresh grid looks before the drone
   /// reaches them (the app already renders missing cells as unscanned).
-  static List<Map<String, dynamic>> _heatmapSnapshot(List<({double lat, double lng, int droneId})> track) {
-    final byCell = <String, Map<String, dynamic>>{};
+  static List<Map<String, dynamic>> _heatmapSnapshot(
+    List<({double lat, double lng, int droneId, double measuredAt})> track,
+  ) {
+    final byCell = <String, _DemoCellSummary>{};
     for (final p in track) {
       final id = cellIdFor(p.lat, p.lng);
       if (id == null) continue;
       final rss = _rssAt(p.lat, p.lng);
-      byCell[id] = {
-        'cell_id': id,
-        'drone_id': p.droneId,
-        'rss_dbm': rss,
-        'color': _rssToColorHex(rss),
-        'status': 'active',
-      };
+      byCell
+          .putIfAbsent(id, () => _DemoCellSummary(id))
+          .record(p.droneId, rss, p.measuredAt);
     }
-    return byCell.values.toList();
+    return byCell.values.map((cell) => cell.toJson()).toList();
   }
 
   /// Starts emitting `init` → periodic `drone_update`/`heatmap_update` →
@@ -90,7 +142,8 @@ class DemoFeed {
     var step = 0;
     var battery = 100.0;
     var detectionFired = false;
-    final track = <({double lat, double lng, int droneId})>[];
+    final track =
+        <({double lat, double lng, int droneId, double measuredAt})>[];
 
     void emitInit() {
       client.emitDemo('init', {
@@ -117,7 +170,12 @@ class DemoFeed {
       final lng = _startLng + (_targetLng - _startLng) * t;
       battery = max(20.0, battery - 0.6);
 
-      track.add((lat: lat, lng: lng, droneId: droneId));
+      track.add((
+        lat: lat,
+        lng: lng,
+        droneId: droneId,
+        measuredAt: DateTime.now().millisecondsSinceEpoch / 1000,
+      ));
 
       client.emitDemo('drone_update', {
         'drone_id': droneId,

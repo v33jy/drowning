@@ -44,7 +44,8 @@ class HelpScreen extends StatelessWidget {
                 _HelpRow(
                   icon: Icons.list_alt_outlined,
                   label: '드론 목록 바',
-                  description: '화면 하단 고정. 드론을 탭하면 배터리 · 위치 · 실시간 영상 프리뷰가 펼쳐집니다.',
+                  description:
+                      '화면 하단 고정. 드론을 탭하면 배터리 · 위치 · 실시간 영상 프리뷰가 펼쳐집니다.',
                 ),
               ],
             ),
@@ -65,10 +66,16 @@ class HelpScreen extends StatelessWidget {
           ),
           SizedBox(height: AppSpacing.lg),
           _HelpSection(
-            title: '전파 히트맵',
+            title: '구조 탐색 지도',
             child: Text(
-              '진할수록 신호가 강하게 잡힌 구역, 옅을수록 아직 스캔되지 않은 구역입니다.',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.5),
+              '회색은 아직 확인되지 않은 구역, 파란색은 확인 중인 구역, '
+              '주황색은 구조 신호가 반복되어 추가 확인이 필요한 구역입니다. '
+              '지도 표시는 구조 대상자의 위치를 확정하지 않습니다.',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
             ),
           ),
           SizedBox(height: AppSpacing.lg),
@@ -172,7 +179,11 @@ class _HelpSection extends StatelessWidget {
 /// icon + 항목명 + 설명 — 실제 화면에 쓰이는 아이콘을 그대로 가져와서
 /// "이 아이콘을 보면 이런 뜻" 매핑까지 한 번에 겸한다.
 class _HelpRow extends StatelessWidget {
-  const _HelpRow({required this.icon, required this.label, required this.description});
+  const _HelpRow({
+    required this.icon,
+    required this.label,
+    required this.description,
+  });
 
   final IconData icon;
   final String label;
@@ -191,11 +202,21 @@ class _HelpRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(height: 2),
                 Text(
                   description,
-                  style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary, height: 1.4),
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: AppColors.textSecondary,
+                    height: 1.4,
+                  ),
                 ),
               ],
             ),

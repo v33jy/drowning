@@ -4,7 +4,7 @@ Heatmap module
 Responsibilities:
   1. Maintain a grid of cells that cover the operation area.
   2. Accept RSS readings from drones and update the corresponding cell.
-  3. Convert RSS dBm values to hex colours (blue = weak → red = strong).
+  3. Derive an operational search status from repeated RSS observations.
   4. Provide a snapshot of all cell states for broadcast / init payloads.
 
 Design decisions
@@ -18,31 +18,12 @@ Design decisions
 
 from __future__ import annotations
 
-import colorsys
+import statistics
 import time
+from dataclasses import dataclass, field
 from typing import Optional
 
 import config
-
-
-# ---------------------------------------------------------------------------
-# Colour mapping
-# ---------------------------------------------------------------------------
-
-def rss_to_color(rss_dbm: float) -> str:
-    """Map an RSS value to a hex colour string.
-
-    Mapping uses HSV with saturation=1, value=1 and hue sliding from
-    240° (blue, weak signal) down to 0° (red, strong signal).  Colours
-    outside the configured range are clamped.
-    """
-    denominator = config.RSS_MAX - config.RSS_MIN
-    if denominator == 0:
-        return "#FF0000"
-    ratio = max(0.0, min(1.0, (rss_dbm - config.RSS_MIN) / denominator))
-    hue = (1.0 - ratio) * 240.0 / 360.0
-    r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
-    return f"#{int(r * 255):02X}{int(g * 255):02X}{int(b * 255):02X}"
 
 
 # ---------------------------------------------------------------------------
@@ -92,28 +73,141 @@ def grid_definition() -> list[dict]:
 # Heatmap state
 # ---------------------------------------------------------------------------
 
-_UNSCANNED_COLOR = "#404040"
+_STATUS_COLORS = {
+    "unscanned": "#404040",
+    "scanning": "#1976D2",
+    "needs_recheck": "#F57C00",
+}
+
+
+@dataclass
+class SignalSample:
+    """One RSS observation retained for the live, time-ordered window."""
+
+    measured_at: float
+    drone_id: int
+    rss_dbm: float
+
+
+@dataclass
+class CellSignalSummary:
+    """Mutable aggregation state for one search cell.
+
+    Raw measurements remain in ``state.signal_readings``. This class keeps
+    only the bounded values required for the live operational summary.
+    """
+
+    cell_id: str
+    recent_samples: list[SignalSample] = field(default_factory=list)
+    drone_ids: set[int] = field(default_factory=set)
+    sample_count: int = 0
+
+    def record(
+        self,
+        drone_id: int,
+        rss_dbm: float,
+        measured_at: Optional[float] = None,
+    ) -> None:
+        timestamp = measured_at if measured_at is not None else time.time()
+        self.recent_samples.append(
+            SignalSample(
+                measured_at=timestamp,
+                drone_id=drone_id,
+                rss_dbm=rss_dbm,
+            )
+        )
+        self.recent_samples.sort(key=lambda sample: sample.measured_at)
+        del self.recent_samples[:-config.SEARCH_RECENT_WINDOW]
+        self.drone_ids.add(drone_id)
+        self.sample_count += 1
+
+    @property
+    def recent_rss(self) -> list[float]:
+        return [sample.rss_dbm for sample in self.recent_samples]
+
+    @property
+    def latest_sample(self) -> Optional[SignalSample]:
+        if not self.recent_samples:
+            return None
+        return self.recent_samples[-1]
+
+    @property
+    def representative_rss_dbm(self) -> Optional[float]:
+        if not self.recent_rss:
+            return None
+        return round(statistics.median(self.recent_rss), 1)
+
+    @property
+    def average_rss_dbm(self) -> Optional[float]:
+        if not self.recent_rss:
+            return None
+        return round(statistics.fmean(self.recent_rss), 1)
+
+    @property
+    def peak_rss_dbm(self) -> Optional[float]:
+        if not self.recent_rss:
+            return None
+        return max(self.recent_rss)
+
+    @property
+    def strong_signal_count(self) -> int:
+        return sum(
+            rss >= config.SEARCH_RECHECK_RSS_DBM for rss in self.recent_rss
+        )
+
+    @property
+    def status(self) -> str:
+        if self.sample_count == 0:
+            return "unscanned"
+        if self.strong_signal_count >= config.SEARCH_RECHECK_MIN_SAMPLES:
+            return "needs_recheck"
+        return "scanning"
+
+    @property
+    def status_reason(self) -> str:
+        if self.status == "unscanned":
+            return "no_measurements"
+        if self.status == "needs_recheck":
+            return "repeated_strong_signal"
+        return "insufficient_repeated_signal"
+
+    def to_dict(self) -> dict:
+        representative = self.representative_rss_dbm
+        latest = self.latest_sample
+        return {
+            "cell_id": self.cell_id,
+            "drone_id": latest.drone_id if latest is not None else None,
+            "rss_dbm": representative,
+            "latest_rss_dbm": latest.rss_dbm if latest is not None else None,
+            "average_rss_dbm": self.average_rss_dbm,
+            "peak_rss_dbm": self.peak_rss_dbm,
+            "sample_count": self.sample_count,
+            "drone_count": len(self.drone_ids),
+            "strong_signal_count": self.strong_signal_count,
+            "color": _STATUS_COLORS[self.status],
+            "status": self.status,
+            "status_reason": self.status_reason,
+            "last_updated": latest.measured_at if latest is not None else None,
+        }
 
 
 class HeatmapState:
-    """Stores the latest RSS reading for every cell in the grid."""
+    """Maintains a live search summary derived from raw RSS observations."""
 
     def __init__(self) -> None:
-        # Pre-populate all cells as unscanned so snapshots are always complete.
-        self._cells: dict[str, dict] = {
-            _cell_id(r, c): {
-                "cell_id": _cell_id(r, c),
-                "drone_id": None,
-                "rss_dbm": None,
-                "color": _UNSCANNED_COLOR,
-                "status": "unscanned",
-                "last_updated": None,
-            }
+        self._cells: dict[str, CellSignalSummary] = {
+            _cell_id(r, c): CellSignalSummary(cell_id=_cell_id(r, c))
             for r in range(config.GRID_ROWS)
             for c in range(config.GRID_COLS)
         }
 
-    def update(self, cell_id: str, drone_id: int, rss_dbm: float) -> None:
+    def update(
+        self,
+        cell_id: str,
+        drone_id: int,
+        rss_dbm: float,
+        measured_at: Optional[float] = None,
+    ) -> None:
         """Record an RSS reading for an existing grid cell.
 
         Raises ValueError for unknown cell_ids so callers get a clear error
@@ -121,15 +215,8 @@ class HeatmapState:
         """
         if cell_id not in self._cells:
             raise ValueError(f"Unknown cell_id '{cell_id}'. Must be within the configured grid.")
-        self._cells[cell_id] = {
-            "cell_id": cell_id,
-            "drone_id": drone_id,
-            "rss_dbm": rss_dbm,
-            "color": rss_to_color(rss_dbm),
-            "status": "active",
-            "last_updated": time.time(),
-        }
+        self._cells[cell_id].record(drone_id, rss_dbm, measured_at)
 
     def snapshot(self) -> list[dict]:
         """Return all cell states as a list, suitable for JSON serialisation."""
-        return list(self._cells.values())
+        return [cell.to_dict() for cell in self._cells.values()]

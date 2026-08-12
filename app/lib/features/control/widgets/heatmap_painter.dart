@@ -51,9 +51,16 @@ class _HeatmapPainter extends CustomPainter {
       final nw = camera.getOffsetFromOrigin(bounds.northWest);
       final se = camera.getOffsetFromOrigin(bounds.southEast);
       final rect = Rect.fromPoints(nw, se);
-      final opacity = cell.isUnscanned ? 0.12 : 0.60;
+      final opacity = switch (cell.status) {
+        SearchAreaStatus.unscanned => 0.12,
+        SearchAreaStatus.scanning => 0.42,
+        SearchAreaStatus.needsRecheck => 0.68,
+      };
 
-      canvas.drawRect(rect, Paint()..color = cell.color.withValues(alpha: opacity));
+      canvas.drawRect(
+        rect,
+        Paint()..color = cell.color.withValues(alpha: opacity),
+      );
     }
   }
 
