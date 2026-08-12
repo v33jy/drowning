@@ -16,11 +16,17 @@ class CellBounds {
   LatLng get northWest => LatLng(latMax, lngMin);
   LatLng get southEast => LatLng(latMin, lngMax);
 
-  bool contains(LatLng point) =>
+  bool contains(
+    LatLng point, {
+    bool includeLatMax = true,
+    bool includeLngMax = true,
+  }) =>
       point.latitude >= latMin &&
-      point.latitude <= latMax &&
+      (point.latitude < latMax ||
+          (includeLatMax && point.latitude == latMax)) &&
       point.longitude >= lngMin &&
-      point.longitude <= lngMax;
+      (point.longitude < lngMax ||
+          (includeLngMax && point.longitude == lngMax));
 
   factory CellBounds.fromJson(Map<String, dynamic> json) => CellBounds(
     latMin: (json['lat_min'] as num).toDouble(),
@@ -31,8 +37,23 @@ class CellBounds {
 }
 
 String? findContainingCellId(Map<String, CellBounds> grid, LatLng point) {
+  if (grid.isEmpty) return null;
+  final outerLatMax = grid.values
+      .map((bounds) => bounds.latMax)
+      .reduce((a, b) => a > b ? a : b);
+  final outerLngMax = grid.values
+      .map((bounds) => bounds.lngMax)
+      .reduce((a, b) => a > b ? a : b);
+
   for (final entry in grid.entries) {
-    if (entry.value.contains(point)) return entry.key;
+    final bounds = entry.value;
+    if (bounds.contains(
+      point,
+      includeLatMax: bounds.latMax == outerLatMax,
+      includeLngMax: bounds.lngMax == outerLngMax,
+    )) {
+      return entry.key;
+    }
   }
   return null;
 }
