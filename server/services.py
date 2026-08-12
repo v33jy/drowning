@@ -75,10 +75,14 @@ def _store_signal_measurement(measurement: dict) -> None:
     """Append one sample while keeping the bounded ID index in sync."""
     if len(state.signal_readings) == state.signal_readings.maxlen:
         evicted = state.signal_readings[0]
-        state.signal_readings_by_id.pop(evicted["measurement_id"], None)
+        state.signal_readings_by_id.pop(
+            (evicted["drone_id"], evicted["measurement_id"]), None
+        )
 
     state.signal_readings.append(measurement)
-    state.signal_readings_by_id[measurement["measurement_id"]] = measurement
+    state.signal_readings_by_id[
+        (measurement["drone_id"], measurement["measurement_id"])
+    ] = measurement
 
 
 async def submit_telemetry(drone_id: int, telemetry: DroneTelemetry) -> dict:
@@ -102,7 +106,9 @@ async def submit_signal(drone_id: int, reading: SignalReading) -> dict:
     """
     async with state.lock:
         if reading.measurement_id is not None:
-            existing = state.signal_readings_by_id.get(reading.measurement_id)
+            existing = state.signal_readings_by_id.get(
+                (drone_id, reading.measurement_id)
+            )
             if existing is not None:
                 return existing
 
@@ -119,7 +125,12 @@ async def submit_signal(drone_id: int, reading: SignalReading) -> dict:
             drone_id, reading, lat, lng, altitude, cell_id
         )
         _store_signal_measurement(measurement)
-        state.heatmap.update(cell_id, drone_id, reading.rss_dbm)
+        state.heatmap.update(
+            cell_id,
+            drone_id,
+            reading.rss_dbm,
+            measurement["measured_at"],
+        )
         snapshot = state.heatmap.snapshot()
 
     await state.manager.broadcast(WsMessage.heatmap_update(snapshot))

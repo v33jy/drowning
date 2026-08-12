@@ -124,6 +124,31 @@ class SignalTests(ApiTestCase):
         self.assertEqual(first.json(), retried.json())
         self.assertEqual(len(state.signal_readings), 1)
 
+    def test_repeated_strong_signals_mark_cell_for_recheck(self):
+        cell_id = None
+        for index in range(config.SEARCH_RECHECK_MIN_SAMPLES):
+            response = self.client.post(
+                "/drones/1/signal",
+                json={
+                    "measurement_id": f"strong-{index}",
+                    "rss_dbm": config.SEARCH_RECHECK_RSS_DBM,
+                    **self._mid_point(),
+                    "measured_at": 1_700_000_000.0 + index,
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            cell_id = response.json()["cell_id"]
+
+        cell = next(
+            item for item in state.heatmap.snapshot()
+            if item["cell_id"] == cell_id
+        )
+        self.assertEqual(cell["status"], "needs_recheck")
+        self.assertEqual(
+            cell["strong_signal_count"],
+            config.SEARCH_RECHECK_MIN_SAMPLES,
+        )
+
     def test_signal_outside_grid_returns_422(self):
         payload = {"lat": config.LAT_MIN - 1, "lng": config.LNG_MIN - 1, "altitude": 50.0, "battery": 80}
         self.client.post("/drones/1/telemetry", json=payload)

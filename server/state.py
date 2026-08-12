@@ -31,7 +31,7 @@ detections: collections.deque[dict] = collections.deque(maxlen=config.MAX_DETECT
 signal_readings: collections.deque[dict] = collections.deque(
     maxlen=config.MAX_SIGNAL_READINGS
 )
-signal_readings_by_id: dict[str, dict] = {}
+signal_readings_by_id: dict[tuple[int, str], dict] = {}
 
 manager = ConnectionManager()
 

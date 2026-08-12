@@ -5,24 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config
-from heatmap import HeatmapState, grid_definition, latlng_to_cell_id, rss_to_color
-
-
-class RssToColorTests(unittest.TestCase):
-    def test_min_rss_is_blue(self):
-        self.assertEqual(rss_to_color(config.RSS_MIN), "#0000FF")
-
-    def test_max_rss_is_red(self):
-        self.assertEqual(rss_to_color(config.RSS_MAX), "#FF0000")
-
-    def test_clamps_below_min(self):
-        self.assertEqual(rss_to_color(config.RSS_MIN - 20), rss_to_color(config.RSS_MIN))
-
-    def test_clamps_above_max(self):
-        self.assertEqual(rss_to_color(config.RSS_MAX + 20), rss_to_color(config.RSS_MAX))
-
-    def test_returns_hex_format(self):
-        self.assertRegex(rss_to_color(-70.0), r"^#[0-9A-F]{6}$")
+from heatmap import HeatmapState, grid_definition, latlng_to_cell_id
 
 
 class LatLngToCellIdTests(unittest.TestCase):
@@ -60,12 +43,57 @@ class HeatmapStateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.heatmap.update("Z99", drone_id=1, rss_dbm=-60.0)
 
-    def test_update_marks_cell_active(self):
+    def test_update_marks_cell_as_scanning(self):
         self.heatmap.update("A0", drone_id=1, rss_dbm=-60.0)
         cell = next(c for c in self.heatmap.snapshot() if c["cell_id"] == "A0")
-        self.assertEqual(cell["status"], "active")
+        self.assertEqual(cell["status"], "scanning")
         self.assertEqual(cell["drone_id"], 1)
         self.assertEqual(cell["rss_dbm"], -60.0)
+        self.assertEqual(cell["sample_count"], 1)
+        self.assertEqual(cell["drone_count"], 1)
+
+    def test_repeated_strong_signal_marks_cell_for_recheck(self):
+        for drone_id in (1, 1, 2):
+            self.heatmap.update(
+                "A0",
+                drone_id=drone_id,
+                rss_dbm=config.SEARCH_RECHECK_RSS_DBM,
+            )
+
+        cell = next(c for c in self.heatmap.snapshot() if c["cell_id"] == "A0")
+        self.assertEqual(cell["status"], "needs_recheck")
+        self.assertEqual(cell["status_reason"], "repeated_strong_signal")
+        self.assertEqual(cell["strong_signal_count"], 3)
+        self.assertEqual(cell["drone_count"], 2)
+
+    def test_summary_uses_recent_median_as_representative_rss(self):
+        for rss_dbm in (-90.0, -60.0, -50.0):
+            self.heatmap.update("A0", drone_id=1, rss_dbm=rss_dbm)
+
+        cell = next(c for c in self.heatmap.snapshot() if c["cell_id"] == "A0")
+        self.assertEqual(cell["rss_dbm"], -60.0)
+        self.assertEqual(cell["average_rss_dbm"], -66.7)
+        self.assertEqual(cell["peak_rss_dbm"], -50.0)
+
+    def test_measurement_timestamp_is_preserved(self):
+        self.heatmap.update(
+            "A0", drone_id=1, rss_dbm=-70.0, measured_at=1_700_000_000.0
+        )
+        cell = next(c for c in self.heatmap.snapshot() if c["cell_id"] == "A0")
+        self.assertEqual(cell["last_updated"], 1_700_000_000.0)
+
+    def test_older_sample_does_not_replace_latest_sample_metadata(self):
+        self.heatmap.update(
+            "A0", drone_id=2, rss_dbm=-55.0, measured_at=200.0
+        )
+        self.heatmap.update(
+            "A0", drone_id=1, rss_dbm=-80.0, measured_at=100.0
+        )
+
+        cell = next(c for c in self.heatmap.snapshot() if c["cell_id"] == "A0")
+        self.assertEqual(cell["latest_rss_dbm"], -55.0)
+        self.assertEqual(cell["drone_id"], 2)
+        self.assertEqual(cell["last_updated"], 200.0)
 
 
 if __name__ == "__main__":
