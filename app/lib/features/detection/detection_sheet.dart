@@ -162,7 +162,7 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
           // Keep the actions visible while giving the live feed most of the dialog.
           VideoThumbnail(frameB64: frameB64, height: videoHeight),
           const SizedBox(height: AppSpacing.lg),
-          if (isThisCall) ...[
+          if (event.callSessionId != null && isThisCall) ...[
             Center(
               child: PushToTalkButton(
                 enabled: callState.status == CallStatus.active,

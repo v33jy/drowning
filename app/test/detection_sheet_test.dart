@@ -81,4 +81,34 @@ void main() {
 
     expect(find.text('outcome:minimized'), findsOneWidget);
   });
+
+  testWidgets('통화 세션이 없는 탐지에는 PTT를 표시하지 않는다', (tester) async {
+    final eventWithoutCall = DetectionEvent(
+      droneId: 1,
+      cellId: 'C4',
+      rssDbm: -41.5,
+      timestamp: DateTime.now().millisecondsSinceEpoch / 1000,
+      detectionId: 'without-call',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showDetectionSheet(context, eventWithoutCall),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('길게 눌러 말하기'), findsNothing);
+    expect(find.text('통화가 연결되면 사용할 수 있습니다'), findsNothing);
+  });
 }
