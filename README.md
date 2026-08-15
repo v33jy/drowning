@@ -36,6 +36,8 @@ python3 -m uvicorn main:app --host 0.0.0.0 --port 8001
 
 `GRID_*` 환경변수는 관제 구역의 위경도 범위를 정하는 값이라, 위 값 그대로 써도 되고 원하는 지역으로 바꿔도 됩니다. 서버가 뜨면 `http://localhost:8001`에서 REST API, `ws://localhost:8001/ws/control`에서 WebSocket이 열립니다.
 
+카메라 스트림은 전부 쌓지 않고 기본 1초 간격으로 최근 장면을 순환 보관합니다. RSS 반복 측정으로 구역이 `재확인 필요` 상태가 되면 해당 시점 전후 10초 장면을 검토 기록으로 보존합니다. 간격과 범위는 `VIDEO_HISTORY_SAMPLE_INTERVAL`, `VIDEO_BOOKMARK_PRE_SECONDS`, `VIDEO_BOOKMARK_POST_SECONDS`, `MAX_VIDEO_BOOKMARKS` 환경변수로 조정할 수 있습니다. 현재 MVP 기록은 서버 메모리에 저장되므로 서버를 재시작하면 초기화됩니다.
+
 ### 2. 관제 앱
 
 서버가 켜진 상태에서 별도 터미널로:

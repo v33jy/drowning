@@ -23,6 +23,9 @@ class ApiTestCase(unittest.TestCase):
         state.detections.clear()
         state.signal_readings.clear()
         state.signal_readings_by_id.clear()
+        state.video_frame_buffers.clear()
+        state.video_last_sampled_at.clear()
+        state.video_bookmarks.clear()
         state.heatmap = HeatmapState()
         state.manager._clients.clear()
         state.call_sessions.clear()
@@ -232,6 +235,74 @@ class VideoWebSocketTests(ApiTestCase):
                 self.assertEqual(message["type"], "video_frame")
                 self.assertEqual(message["data"]["drone_id"], 1)
                 self.assertEqual(message["data"]["seq"], 0)
+
+    def test_recheck_area_preserves_camera_frames_for_review(self):
+        payload = {**self._mid_point(), "altitude": 50.0, "battery": 80}
+        self.client.post("/drones/1/telemetry", json=payload)
+
+        with self.client.websocket_connect("/drones/1/video") as video_ws:
+            video_ws.send_bytes(b"\xff\xd8\xff\x00review-frame")
+
+        for index in range(config.SEARCH_RECHECK_MIN_SAMPLES):
+            response = self.client.post(
+                "/drones/1/signal",
+                json={
+                    "measurement_id": f"strong-{index}",
+                    "rss_dbm": config.SEARCH_RECHECK_RSS_DBM,
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+
+        bookmarks = self.client.get(
+            "/drones/video/bookmarks", params={"cell_id": response.json()["cell_id"]}
+        ).json()
+        self.assertEqual(len(bookmarks), 1)
+        self.assertEqual(bookmarks[0]["frame_count"], 1)
+        self.assertEqual(bookmarks[0]["cell_id"], response.json()["cell_id"])
+
+        frame_response = self.client.get(
+            f"/drones/video/bookmarks/{bookmarks[0]['bookmark_id']}/frames/0"
+        )
+        self.assertEqual(frame_response.status_code, 200)
+        self.assertEqual(frame_response.headers["content-type"], "image/jpeg")
+        self.assertEqual(frame_response.content, b"\xff\xd8\xff\x00review-frame")
+
+    def test_recheck_transition_creates_only_one_bookmark(self):
+        payload = {**self._mid_point(), "altitude": 50.0, "battery": 80}
+        self.client.post("/drones/1/telemetry", json=payload)
+
+        for index in range(config.SEARCH_RECHECK_MIN_SAMPLES + 2):
+            self.client.post(
+                "/drones/1/signal",
+                json={
+                    "measurement_id": f"strong-{index}",
+                    "rss_dbm": config.SEARCH_RECHECK_RSS_DBM,
+                },
+            )
+
+        self.assertEqual(len(state.video_bookmarks), 1)
+
+    def test_expired_bookmark_is_reported_complete_without_another_frame(self):
+        state.video_bookmarks.append(
+            {
+                "bookmark_id": "expired",
+                "drone_id": 1,
+                "cell_id": "A0",
+                "measurement_id": "measurement-1",
+                "rss_dbm": -55.0,
+                "triggered_at": 0.0,
+                "starts_at": 0.0,
+                "ends_at": 0.0,
+                "complete": False,
+                "frames": [],
+            }
+        )
+
+        bookmarks = self.client.get(
+            "/drones/video/bookmarks", params={"cell_id": "A0"}
+        ).json()
+
+        self.assertTrue(bookmarks[0]["complete"])
 
 
 class CallWebSocketTests(ApiTestCase):

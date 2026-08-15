@@ -1,8 +1,11 @@
 import 'package:control_app/features/control/widgets/search_area_detail_sheet.dart';
 import 'package:control_app/features/control/widgets/search_area_guidance.dart';
 import 'package:control_app/models/heatmap_cell.dart';
+import 'package:control_app/models/video_bookmark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:control_app/features/control/widgets/video_review_section.dart';
 
 void main() {
   test('maps search status to responder-facing guidance', () {
@@ -67,5 +70,57 @@ void main() {
     expect(find.text('측정 횟수'), findsOneWidget);
     expect(find.text('확인 드론'), findsOneWidget);
     expect(find.textContaining('위치를 확정하지 않습니다'), findsOneWidget);
+  });
+
+  testWidgets('offline demo does not request stored video', (tester) async {
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: VideoReviewSection(cellId: 'A0', demoMode: true),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('데모 모드'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+  });
+
+  testWidgets('allows selecting every retained video bookmark', (tester) async {
+    final bookmarks = [
+      VideoBookmark(
+        bookmarkId: 'newest',
+        cellId: 'A0',
+        triggeredAt: DateTime(2026, 8, 15, 14),
+        frameCount: 1,
+        complete: true,
+      ),
+      VideoBookmark(
+        bookmarkId: 'earlier',
+        cellId: 'A0',
+        triggeredAt: DateTime(2026, 8, 15, 13),
+        frameCount: 1,
+        complete: true,
+      ),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: VideoBookmarkHistory(
+            bookmarks: bookmarks,
+            baseUrl: 'http://localhost:8000',
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('08/15 13:00').last);
+    await tester.pumpAndSettle();
+
+    final image = tester.widget<Image>(find.byType(Image));
+    expect((image.image as NetworkImage).url, contains('/earlier/'));
   });
 }

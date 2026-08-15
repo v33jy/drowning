@@ -7,6 +7,7 @@ import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../models/heatmap_cell.dart';
 import '../providers/heatmap_provider.dart';
 import 'search_area_guidance.dart';
+import 'video_review_section.dart';
 
 Future<void> showSearchAreaDetailSheet(BuildContext context, String cellId) =>
     AppBottomSheet.show<void>(
@@ -27,14 +28,22 @@ class _LiveSearchAreaDetail extends ConsumerWidget {
         (cells) => cells[cellId] ?? HeatmapCell.unscanned(cellId),
       ),
     );
-    return SearchAreaDetailSheet(cell: cell);
+    return SearchAreaDetailSheet(
+      cell: cell,
+      videoReview: VideoReviewSection(cellId: cellId),
+    );
   }
 }
 
 class SearchAreaDetailSheet extends StatelessWidget {
-  const SearchAreaDetailSheet({required this.cell, super.key});
+  const SearchAreaDetailSheet({
+    required this.cell,
+    this.videoReview,
+    super.key,
+  });
 
   final HeatmapCell cell;
+  final Widget? videoReview;
 
   @override
   Widget build(BuildContext context) {
@@ -66,6 +75,10 @@ class SearchAreaDetailSheet extends StatelessWidget {
           _InfoRow(label: '확인 드론', value: '${cell.droneCount}대'),
           if (cell.needsRecheck)
             _InfoRow(label: '반복 확인', value: '${cell.strongSignalCount}회'),
+          const SizedBox(height: AppSpacing.lg),
+          Text('당시 영상', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: AppSpacing.sm),
+          videoReview ?? const Text('이 구역에 보존된 영상이 없습니다.'),
           const SizedBox(height: AppSpacing.sm),
           Text(
             '이 정보는 수색 판단을 지원하며 구조 대상자의 위치를 확정하지 않습니다.',
