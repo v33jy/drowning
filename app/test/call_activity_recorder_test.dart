@@ -41,4 +41,36 @@ void main() {
     expect(ended.single.title, '음성 연결 종료');
     expect(ended.single.details, isNull);
   });
+
+  test('reconnection keeps the original call start time', () {
+    final recorder = CallActivityRecorder();
+    final startedAt = DateTime(2026, 8, 15, 23, 58);
+    final reconnectedAt = startedAt.add(const Duration(minutes: 1));
+    final endedAt = startedAt.add(const Duration(minutes: 4));
+
+    recorder.recordTransition(
+      previous: const CallState(CallStatus.connecting, sessionId: 'call-1'),
+      next: const CallState(CallStatus.active, sessionId: 'call-1'),
+      timestamp: startedAt,
+    );
+    recorder.recordTransition(
+      previous: const CallState(CallStatus.active, sessionId: 'call-1'),
+      next: const CallState(CallStatus.reconnecting, sessionId: 'call-1'),
+      timestamp: startedAt.add(const Duration(seconds: 30)),
+    );
+    final reconnected = recorder.recordTransition(
+      previous: const CallState(CallStatus.reconnecting, sessionId: 'call-1'),
+      next: const CallState(CallStatus.active, sessionId: 'call-1'),
+      timestamp: reconnectedAt,
+    );
+    final ended = recorder.recordTransition(
+      previous: const CallState(CallStatus.active, sessionId: 'call-1'),
+      next: const CallState(CallStatus.idle),
+      timestamp: endedAt,
+    );
+
+    expect(reconnected, isEmpty);
+    expect(ended.single.details?.startedAt, startedAt);
+    expect(ended.single.details?.endedAt, endedAt);
+  });
 }

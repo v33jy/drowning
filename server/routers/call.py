@@ -37,6 +37,11 @@ async def _relay(ws: WebSocket, session_id: str, role: str) -> None:
     else:
         session.survivor_ws = ws
 
+    # Negotiate only after both reconnecting peers have joined. Otherwise an
+    # early WebRTC offer would be dropped while the other socket is absent.
+    if session.control_ws is not None and session.survivor_ws is not None:
+        await session.control_ws.send_json({"type": "peer-ready"})
+
     try:
         while True:
             message = await ws.receive_json()

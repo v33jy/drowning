@@ -9,6 +9,7 @@ import '../../core/widgets/video_thumbnail.dart';
 import '../../models/detection_event.dart';
 import '../../services/call_service.dart';
 import '../control/providers/video_frame_provider.dart';
+import 'call_controls.dart';
 import 'providers/detection_log_provider.dart';
 
 /// Result returned when the sheet closes, so [ControlScreen] knows whether
@@ -98,8 +99,6 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
     final frameB64 = ref.watch(
       videoFrameProvider.select((m) => m[event.droneId]),
     );
-    final callState = ref.watch(callServiceProvider);
-    final isThisCall = callState.sessionId == event.callSessionId;
     final videoHeight = math.min(
       340.0,
       MediaQuery.sizeOf(context).height * 0.46,
@@ -169,39 +168,7 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
               alignment: WrapAlignment.center,
               children: [
                 if (event.callSessionId != null)
-                  SizedBox(
-                    width: 180,
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: isThisCall
-                            ? AppColors.danger
-                            : AppColors.navy,
-                      ),
-                      onPressed:
-                          callState.status == CallStatus.connecting &&
-                              isThisCall
-                          ? null
-                          : () {
-                              if (isThisCall) {
-                                ref
-                                    .read(callServiceProvider.notifier)
-                                    .endCall();
-                              } else {
-                                ref
-                                    .read(callServiceProvider.notifier)
-                                    .startCall(event.callSessionId!);
-                              }
-                            },
-                      icon: Icon(isThisCall ? Icons.call_end : Icons.call),
-                      label: Text(
-                        isThisCall
-                            ? callState.status == CallStatus.connecting
-                                  ? '연결 중'
-                                  : '전화 끊기'
-                            : '전화 연결',
-                      ),
-                    ),
-                  ),
+                  CallControls(sessionId: event.callSessionId!),
                 SizedBox(
                   width: 180,
                   child: FilledButton(

@@ -44,6 +44,7 @@ class CallActivityRecorder {
       case CallStatus.active:
         final sessionId = next.sessionId;
         if (sessionId == null) return const [];
+        if (_activeCall?.sessionId == sessionId) return const [];
         _activeCall = CallActivityDetails(
           sessionId: sessionId,
           startedAt: timestamp,
@@ -57,22 +58,41 @@ class CallActivityRecorder {
             details: _activeCall,
           ),
         ];
+      case CallStatus.reconnecting:
+        return [
+          CallActivityRecord(
+            kind: LogActivityKind.callConnecting,
+            title: '음성 연결 끊김 · 자동 재연결 중',
+            severity: Severity.warning,
+            timestamp: timestamp,
+          ),
+        ];
+      case CallStatus.disconnected:
+        return [_endRecord(timestamp, failed: true)];
       case CallStatus.idle:
         if (previous == null || previous.status == CallStatus.idle) {
           return const [];
         }
-        final activeCall = _activeCall;
-        _activeCall = null;
-        final details = activeCall?.ended(timestamp);
-        return [
-          CallActivityRecord(
-            kind: LogActivityKind.callEnded,
-            title: activeCall == null ? '음성 연결 종료' : '음성 통화 종료',
-            severity: Severity.offline,
-            timestamp: timestamp,
-            details: details,
-          ),
-        ];
+        if (previous.status == CallStatus.disconnected) return const [];
+        return [_endRecord(timestamp)];
     }
+  }
+
+  CallActivityRecord _endRecord(DateTime timestamp, {bool failed = false}) {
+    final activeCall = _activeCall;
+    _activeCall = null;
+    final wasActive = activeCall != null;
+    return CallActivityRecord(
+      kind: LogActivityKind.callEnded,
+      title: switch ((wasActive, failed)) {
+        (true, true) => '음성 통화 종료 · 연결 실패',
+        (true, false) => '음성 통화 종료',
+        (false, true) => '음성 연결 실패 · 수동 재시도 필요',
+        (false, false) => '음성 연결 종료',
+      },
+      severity: Severity.offline,
+      timestamp: timestamp,
+      details: activeCall?.ended(timestamp),
+    );
   }
 }
