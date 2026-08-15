@@ -48,24 +48,10 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
         previous: previous,
         next: next,
         timestamp: DateTime.now(),
-        createEntry:
-            ({
-              required kind,
-              required title,
-              required severity,
-              required timestamp,
-              callDetails,
-            }) => LogEntry(
-              type: LogEntryType.activity,
-              activityKind: kind,
-              droneId: _currentDroneId,
-              timestamp: timestamp,
-              title: title,
-              severity: severity,
-              callDetails: callDetails,
-            ),
       );
-      if (entries.isNotEmpty) state = [...state, ...entries];
+      if (entries.isNotEmpty) {
+        state = [...state, ...entries.map(_callLogEntry)];
+      }
     });
 
     ref.listen(detectionLogProvider, (previous, next) {
@@ -107,6 +93,16 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
   }
 
   int get _currentDroneId => ref.read(dronesProvider).keys.firstOrNull ?? 1;
+
+  LogEntry _callLogEntry(CallActivityRecord record) => LogEntry(
+    type: LogEntryType.activity,
+    activityKind: record.kind,
+    droneId: _currentDroneId,
+    timestamp: record.timestamp,
+    title: record.title,
+    severity: record.severity,
+    callDetails: record.details,
+  );
 
   void _append(
     LogActivityKind kind,

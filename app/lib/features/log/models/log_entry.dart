@@ -28,6 +28,12 @@ class CallActivityDetails {
   final DateTime? endedAt;
 
   Duration? get duration => endedAt?.difference(startedAt);
+
+  CallActivityDetails ended(DateTime timestamp) => CallActivityDetails(
+    sessionId: sessionId,
+    startedAt: startedAt,
+    endedAt: timestamp,
+  );
 }
 
 /// Unified row for the 기록 screen (구 "탐지 이력" + "알림 센터"). Detections
