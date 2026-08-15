@@ -6,9 +6,8 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../models/heatmap_cell.dart';
 import '../providers/heatmap_provider.dart';
-import '../providers/video_bookmark_provider.dart';
-import '../../settings/providers/settings_provider.dart';
 import 'search_area_guidance.dart';
+import 'video_review_section.dart';
 
 Future<void> showSearchAreaDetailSheet(BuildContext context, String cellId) =>
     AppBottomSheet.show<void>(
@@ -31,7 +30,7 @@ class _LiveSearchAreaDetail extends ConsumerWidget {
     );
     return SearchAreaDetailSheet(
       cell: cell,
-      videoReview: _VideoHistorySection(cellId: cellId),
+      videoReview: VideoReviewSection(cellId: cellId),
     );
   }
 }
@@ -89,98 +88,6 @@ class SearchAreaDetailSheet extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _VideoHistorySection extends ConsumerWidget {
-  const _VideoHistorySection({required this.cellId});
-
-  final String cellId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final bookmarks = ref.watch(videoBookmarksProvider(cellId));
-    return bookmarks.when(
-      data: (items) => items.isEmpty
-          ? const Text('이 구역에 보존된 영상이 없습니다.')
-          : _VideoReviewCard(
-              bookmarkId: items.first.bookmarkId,
-              frameCount: items.first.frameCount,
-              baseUrl: ref.read(settingsProvider).baseUrl,
-            ),
-      loading: () => const LinearProgressIndicator(),
-      error: (_, _) => const Text('영상 기록을 불러오지 못했습니다.'),
-    );
-  }
-}
-
-class _VideoReviewCard extends StatefulWidget {
-  const _VideoReviewCard({
-    required this.bookmarkId,
-    required this.frameCount,
-    required this.baseUrl,
-  });
-
-  final String bookmarkId;
-  final int frameCount;
-  final String baseUrl;
-
-  @override
-  State<_VideoReviewCard> createState() => _VideoReviewCardState();
-}
-
-class _VideoReviewCardState extends State<_VideoReviewCard> {
-  var _frameIndex = 0;
-
-  String get _frameUrl =>
-      '${widget.baseUrl}/drones/video/bookmarks/${widget.bookmarkId}/frames/$_frameIndex';
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.frameCount == 0) {
-      return const Text('신호 발생 시점에 수신된 카메라 장면이 없습니다.');
-    }
-    return Column(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          child: AspectRatio(
-            aspectRatio: 16 / 9,
-            child: Image.network(
-              _frameUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) =>
-                  const Center(child: Text('장면을 표시할 수 없습니다.')),
-            ),
-          ),
-        ),
-        if (widget.frameCount > 1)
-          Row(
-            children: [
-              IconButton(
-                tooltip: '이전 장면',
-                onPressed: _frameIndex == 0
-                    ? null
-                    : () => setState(() => _frameIndex--),
-                icon: const Icon(Icons.chevron_left),
-              ),
-              Expanded(
-                child: Text(
-                  '${_frameIndex + 1} / ${widget.frameCount}',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              IconButton(
-                tooltip: '다음 장면',
-                onPressed: _frameIndex == widget.frameCount - 1
-                    ? null
-                    : () => setState(() => _frameIndex++),
-                icon: const Icon(Icons.chevron_right),
-              ),
-            ],
-          ),
-      ],
     );
   }
 }

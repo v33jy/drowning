@@ -26,6 +26,37 @@ def _frame_metadata(frame: dict) -> dict:
     }
 
 
+def _find_bookmark(bookmark_id: str) -> dict | None:
+    return next(
+        (
+            bookmark
+            for bookmark in state.video_bookmarks
+            if bookmark["bookmark_id"] == bookmark_id
+        ),
+        None,
+    )
+
+
+def _bookmark_metadata(bookmark: dict) -> dict:
+    metadata = {key: value for key, value in bookmark.items() if key != "frames"}
+    frames = bookmark["frames"]
+    return {
+        **metadata,
+        "frame_count": len(frames),
+        "frames": [_frame_metadata(frame) for frame in frames],
+    }
+
+
+def _append_to_active_bookmarks(drone_id: int, frame: dict, now: float) -> None:
+    for bookmark in state.video_bookmarks:
+        if bookmark["drone_id"] != drone_id or bookmark["complete"]:
+            continue
+        if now > bookmark["ends_at"]:
+            bookmark["complete"] = True
+            continue
+        bookmark["frames"].append(frame)
+
+
 def retain_frame(
     drone_id: int,
     frame_bytes: bytes,
@@ -54,13 +85,7 @@ def retain_frame(
     buffer.append(frame)
     state.video_last_sampled_at[drone_id] = now
 
-    for bookmark in state.video_bookmarks:
-        if bookmark["drone_id"] != drone_id or bookmark["complete"]:
-            continue
-        if now <= bookmark["ends_at"]:
-            bookmark["frames"].append(frame)
-        else:
-            bookmark["complete"] = True
+    _append_to_active_bookmarks(drone_id, frame, now)
 
 
 def create_recheck_bookmark(measurement: dict) -> dict:
@@ -89,33 +114,15 @@ def create_recheck_bookmark(measurement: dict) -> dict:
 
 
 def list_bookmarks(cell_id: str | None = None) -> list[dict]:
-    bookmarks = reversed(state.video_bookmarks)
     return [
-        {
-            key: value
-            for key, value in bookmark.items()
-            if key != "frames"
-        }
-        | {
-            "frame_count": len(bookmark["frames"]),
-            "frames": [
-                _frame_metadata(frame) for frame in bookmark["frames"]
-            ],
-        }
-        for bookmark in bookmarks
+        _bookmark_metadata(bookmark)
+        for bookmark in reversed(state.video_bookmarks)
         if cell_id is None or bookmark["cell_id"] == cell_id
     ]
 
 
 def get_frame(bookmark_id: str, frame_index: int) -> bytes | None:
-    bookmark = next(
-        (
-            item
-            for item in state.video_bookmarks
-            if item["bookmark_id"] == bookmark_id
-        ),
-        None,
-    )
+    bookmark = _find_bookmark(bookmark_id)
     if bookmark is None or not 0 <= frame_index < len(bookmark["frames"]):
         return None
     return bookmark["frames"][frame_index]["jpeg"]

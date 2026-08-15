@@ -11,6 +11,9 @@ class VideoBookmark {
   final DateTime triggeredAt;
   final int frameCount;
 
+  String frameUrl(String baseUrl, int frameIndex) =>
+      '$baseUrl/drones/video/bookmarks/$bookmarkId/frames/$frameIndex';
+
   factory VideoBookmark.fromJson(Map<String, dynamic> json) => VideoBookmark(
     bookmarkId: json['bookmark_id'] as String,
     cellId: json['cell_id'] as String,

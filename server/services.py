@@ -86,6 +86,11 @@ def _store_signal_measurement(measurement: dict) -> None:
     ] = measurement
 
 
+def _search_status(snapshot: list[dict], cell_id: str) -> str:
+    """Read one cell status from a heatmap snapshot."""
+    return next(cell["status"] for cell in snapshot if cell["cell_id"] == cell_id)
+
+
 async def submit_telemetry(drone_id: int, telemetry: DroneTelemetry) -> dict:
     entry = {
         "drone_id": drone_id,
@@ -126,11 +131,7 @@ async def submit_signal(drone_id: int, reading: SignalReading) -> dict:
             drone_id, reading, lat, lng, altitude, cell_id
         )
         _store_signal_measurement(measurement)
-        previous_status = next(
-            cell["status"]
-            for cell in state.heatmap.snapshot()
-            if cell["cell_id"] == cell_id
-        )
+        previous_status = _search_status(state.heatmap.snapshot(), cell_id)
         state.heatmap.update(
             cell_id,
             drone_id,
@@ -138,9 +139,7 @@ async def submit_signal(drone_id: int, reading: SignalReading) -> dict:
             measurement["measured_at"],
         )
         snapshot = state.heatmap.snapshot()
-        current_status = next(
-            cell["status"] for cell in snapshot if cell["cell_id"] == cell_id
-        )
+        current_status = _search_status(snapshot, cell_id)
         if previous_status != "needs_recheck" and current_status == "needs_recheck":
             video_history.create_recheck_bookmark(measurement)
 
