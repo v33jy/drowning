@@ -13,6 +13,29 @@ enum LogActivityKind {
   detectionResolved,
 }
 
+/// In-memory metadata for a voice-call activity. An ended call keeps both
+/// timestamps so the log remains useful as an operational timeline without
+/// requiring a database.
+class CallActivityDetails {
+  const CallActivityDetails({
+    required this.sessionId,
+    required this.startedAt,
+    this.endedAt,
+  });
+
+  final String sessionId;
+  final DateTime startedAt;
+  final DateTime? endedAt;
+
+  Duration? get duration => endedAt?.difference(startedAt);
+
+  CallActivityDetails ended(DateTime timestamp) => CallActivityDetails(
+    sessionId: sessionId,
+    startedAt: startedAt,
+    endedAt: timestamp,
+  );
+}
+
 /// Unified row for the 기록 screen (구 "탐지 이력" + "알림 센터"). Detections
 /// carry their original event + resolution status; drone health alerts are
 /// plain text entries derived from telemetry transitions.
@@ -26,6 +49,7 @@ class LogEntry {
     this.detectionEvent,
     this.status,
     this.activityKind,
+    this.callDetails,
   });
 
   final LogEntryType type;
@@ -36,6 +60,7 @@ class LogEntry {
   final DetectionEvent? detectionEvent;
   final DetectionStatus? status;
   final LogActivityKind? activityKind;
+  final CallActivityDetails? callDetails;
 
   /// "조치 필요" 필터에 실제로 의미가 있는 건 탐지뿐이다 — 대기 중이면 조치가
   /// 필요하다는 뜻이고, 처리되면 끝이다. 배터리/신호 경고는 그런 액션 상태가
