@@ -6,6 +6,8 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'push_to_talk_button.dart';
+
 void main() => runApp(const SurvivorApp());
 
 class ServerConfig {
@@ -28,6 +30,7 @@ class SurvivorCallController extends ChangeNotifier {
 
   final Duration connectionAttemptTimeout;
   CallPhase phase = CallPhase.waiting;
+  bool isTransmitting = false;
 
   WebSocketChannel? _listener;
   WebSocketChannel? _signaling;
@@ -112,6 +115,7 @@ class SurvivorCallController extends ChangeNotifier {
           'audio': true,
           'video': false,
         });
+        _setMicrophoneEnabled(false);
       }
       await _closeCallConnection(keepLocalStream: true);
       if (!_isCurrentCall(generation, sessionId)) return;
@@ -174,6 +178,8 @@ class SurvivorCallController extends ChangeNotifier {
 
   Future<void> _handleCallFailure(String sessionId, int generation) async {
     if (!_isCurrentCall(generation, sessionId)) return;
+    _setMicrophoneEnabled(false);
+    isTransmitting = false;
     _connectionGeneration++;
     await _closeCallConnection(keepLocalStream: true);
     if (_disposed || _ending || _sessionId != sessionId) return;
@@ -246,8 +252,31 @@ class SurvivorCallController extends ChangeNotifier {
     _signaling?.sink.add(jsonEncode(message));
   }
 
+  void startTransmitting() {
+    if (_disposed || phase != CallPhase.active) return;
+    _setMicrophoneEnabled(true);
+    isTransmitting = true;
+    notifyListeners();
+  }
+
+  void stopTransmitting() {
+    if (_disposed || !isTransmitting) return;
+    _setMicrophoneEnabled(false);
+    isTransmitting = false;
+    notifyListeners();
+  }
+
+  void _setMicrophoneEnabled(bool enabled) {
+    for (final track
+        in _localStream?.getAudioTracks() ?? <MediaStreamTrack>[]) {
+      track.enabled = enabled;
+    }
+  }
+
   Future<void> endCall({bool notifyPeer = true}) async {
     if (phase == CallPhase.waiting) return;
+    _setMicrophoneEnabled(false);
+    isTransmitting = false;
     _ending = true;
     _callReconnectTimer?.cancel();
     _connectionGeneration++;
@@ -376,6 +405,21 @@ class _CallScreenState extends State<CallScreen> {
                       ),
                     ],
                     if (inCall) ...[
+                      if (controller.phase == CallPhase.active) ...[
+                        const SizedBox(height: 40),
+                        SurvivorPushToTalkButton(
+                          isTransmitting: controller.isTransmitting,
+                          onTransmitStart: controller.startTransmitting,
+                          onTransmitEnd: controller.stopTransmitting,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          controller.isTransmitting
+                              ? '목소리를 전송하고 있습니다'
+                              : '평소에는 마이크가 꺼져 있습니다',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
                       const SizedBox(height: 48),
                       FilledButton.icon(
                         style: FilledButton.styleFrom(

@@ -18,12 +18,14 @@ class CallState {
     this.sessionId,
     this.retryAttempt = 0,
     this.message,
+    this.isTransmitting = false,
   });
 
   final CallStatus status;
   final String? sessionId;
   final int retryAttempt;
   final String? message;
+  final bool isTransmitting;
 
   bool get canRetry => status == CallStatus.disconnected && sessionId != null;
 }
@@ -100,6 +102,7 @@ class CallService extends StateNotifier<CallState> {
           'audio': true,
           'video': false,
         });
+        _setMicrophoneEnabled(false);
       }
 
       await _closeConnection(keepLocalStream: true);
@@ -170,6 +173,7 @@ class CallService extends StateNotifier<CallState> {
     String message,
   ) async {
     if (!_isCurrent(generation, sessionId)) return;
+    _setMicrophoneEnabled(false);
     final attempt = state.retryAttempt + 1;
     _connectionGeneration++;
     await _closeConnection(keepLocalStream: true);
@@ -247,6 +251,36 @@ class CallService extends StateNotifier<CallState> {
     _signaling?.sink.add(jsonEncode(message));
   }
 
+  void startTransmitting() {
+    if (_disposed || state.status != CallStatus.active) return;
+    _setMicrophoneEnabled(true);
+    state = CallState(
+      state.status,
+      sessionId: state.sessionId,
+      retryAttempt: state.retryAttempt,
+      message: state.message,
+      isTransmitting: true,
+    );
+  }
+
+  void stopTransmitting() {
+    if (_disposed || !state.isTransmitting) return;
+    _setMicrophoneEnabled(false);
+    state = CallState(
+      state.status,
+      sessionId: state.sessionId,
+      retryAttempt: state.retryAttempt,
+      message: state.message,
+    );
+  }
+
+  void _setMicrophoneEnabled(bool enabled) {
+    for (final track
+        in _localStream?.getAudioTracks() ?? <MediaStreamTrack>[]) {
+      track.enabled = enabled;
+    }
+  }
+
   Future<void> _closeConnection({required bool keepLocalStream}) async {
     final subscription = _signalingSubscription;
     final signaling = _signaling;
@@ -273,6 +307,7 @@ class CallService extends StateNotifier<CallState> {
   Future<void> endCall({bool notifyPeer = true}) async {
     if (_disposed || state.status == CallStatus.idle || _ending) return;
     _ending = true;
+    _setMicrophoneEnabled(false);
     _reconnectTimer?.cancel();
     _connectionGeneration++;
     if (notifyPeer) _send({'type': 'call-end'});

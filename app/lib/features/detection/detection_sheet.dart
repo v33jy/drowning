@@ -11,6 +11,7 @@ import '../../services/call_service.dart';
 import '../control/providers/video_frame_provider.dart';
 import 'call_controls.dart';
 import 'providers/detection_log_provider.dart';
+import 'push_to_talk_button.dart';
 
 /// Result returned when the sheet closes, so [ControlScreen] knows whether
 /// to immediately open the next queued detection.
@@ -99,6 +100,8 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
     final frameB64 = ref.watch(
       videoFrameProvider.select((m) => m[event.droneId]),
     );
+    final callState = ref.watch(callServiceProvider);
+    final isThisCall = callState.sessionId == event.callSessionId;
     final videoHeight = math.min(
       340.0,
       MediaQuery.sizeOf(context).height * 0.46,
@@ -160,6 +163,30 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
           // Keep the actions visible while giving the live feed most of the dialog.
           VideoThumbnail(frameB64: frameB64, height: videoHeight),
           const SizedBox(height: AppSpacing.lg),
+          if (event.callSessionId != null && isThisCall) ...[
+            Center(
+              child: PushToTalkButton(
+                enabled: callState.status == CallStatus.active,
+                isTransmitting: callState.isTransmitting,
+                onTransmitStart: ref
+                    .read(callServiceProvider.notifier)
+                    .startTransmitting,
+                onTransmitEnd: ref
+                    .read(callServiceProvider.notifier)
+                    .stopTransmitting,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Center(
+              child: Text(
+                callState.status == CallStatus.active
+                    ? '평소에는 마이크가 꺼져 있습니다'
+                    : '통화가 연결되면 사용할 수 있습니다',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+          ],
           Align(
             alignment: Alignment.center,
             child: Wrap(
