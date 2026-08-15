@@ -1,30 +1,97 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../config.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../models/video_bookmark.dart';
 import '../../settings/providers/settings_provider.dart';
 import '../providers/video_bookmark_provider.dart';
 
 class VideoReviewSection extends ConsumerWidget {
-  const VideoReviewSection({required this.cellId, super.key});
+  const VideoReviewSection({
+    required this.cellId,
+    this.demoMode = Config.demoMode,
+    super.key,
+  });
 
   final String cellId;
+  final bool demoMode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (demoMode) {
+      return const Text('데모 모드에서는 저장된 영상을 제공하지 않습니다.');
+    }
     final bookmarks = ref.watch(videoBookmarksProvider(cellId));
     return bookmarks.when(
       data: (items) => items.isEmpty
           ? const Text('이 구역에 보존된 영상이 없습니다.')
-          : VideoReviewCard(
-              bookmark: items.first,
+          : VideoBookmarkHistory(
+              bookmarks: items,
               baseUrl: ref.read(settingsProvider).baseUrl,
             ),
       loading: () => const LinearProgressIndicator(),
       error: (_, _) => const Text('영상 기록을 불러오지 못했습니다.'),
     );
   }
+}
+
+class VideoBookmarkHistory extends StatefulWidget {
+  const VideoBookmarkHistory({
+    required this.bookmarks,
+    required this.baseUrl,
+    super.key,
+  });
+
+  final List<VideoBookmark> bookmarks;
+  final String baseUrl;
+
+  @override
+  State<VideoBookmarkHistory> createState() => _VideoBookmarkHistoryState();
+}
+
+class _VideoBookmarkHistoryState extends State<VideoBookmarkHistory> {
+  String? _selectedBookmarkId;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = widget.bookmarks.firstWhere(
+      (item) => item.bookmarkId == _selectedBookmarkId,
+      orElse: () => widget.bookmarks.first,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.bookmarks.length > 1) ...[
+          DropdownButtonFormField<String>(
+            initialValue: selected.bookmarkId,
+            decoration: const InputDecoration(labelText: '영상 기록 선택'),
+            items: [
+              for (final bookmark in widget.bookmarks)
+                DropdownMenuItem(
+                  value: bookmark.bookmarkId,
+                  child: Text(_formatBookmarkTime(bookmark.triggeredAt)),
+                ),
+            ],
+            onChanged: (value) => setState(() => _selectedBookmarkId = value),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+        VideoReviewCard(
+          key: ValueKey(selected.bookmarkId),
+          bookmark: selected,
+          baseUrl: widget.baseUrl,
+        ),
+      ],
+    );
+  }
+}
+
+String _formatBookmarkTime(DateTime timestamp) {
+  final local = timestamp.toLocal();
+  String twoDigits(int value) => value.toString().padLeft(2, '0');
+  return '${twoDigits(local.month)}/${twoDigits(local.day)} '
+      '${twoDigits(local.hour)}:${twoDigits(local.minute)}';
 }
 
 class VideoReviewCard extends StatefulWidget {

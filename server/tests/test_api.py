@@ -282,6 +282,28 @@ class VideoWebSocketTests(ApiTestCase):
 
         self.assertEqual(len(state.video_bookmarks), 1)
 
+    def test_expired_bookmark_is_reported_complete_without_another_frame(self):
+        state.video_bookmarks.append(
+            {
+                "bookmark_id": "expired",
+                "drone_id": 1,
+                "cell_id": "A0",
+                "measurement_id": "measurement-1",
+                "rss_dbm": -55.0,
+                "triggered_at": 0.0,
+                "starts_at": 0.0,
+                "ends_at": 0.0,
+                "complete": False,
+                "frames": [],
+            }
+        )
+
+        bookmarks = self.client.get(
+            "/drones/video/bookmarks", params={"cell_id": "A0"}
+        ).json()
+
+        self.assertTrue(bookmarks[0]["complete"])
+
 
 class CallWebSocketTests(ApiTestCase):
     def _session(self):

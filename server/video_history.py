@@ -38,6 +38,8 @@ def _find_bookmark(bookmark_id: str) -> dict | None:
 
 
 def _bookmark_metadata(bookmark: dict) -> dict:
+    if not bookmark["complete"] and time.time() >= bookmark["ends_at"]:
+        bookmark["complete"] = True
     metadata = {key: value for key, value in bookmark.items() if key != "frames"}
     frames = bookmark["frames"]
     return {
