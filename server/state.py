@@ -33,6 +33,14 @@ signal_readings: collections.deque[dict] = collections.deque(
 )
 signal_readings_by_id: dict[tuple[int, str], dict] = {}
 
+# Sampled JPEG frames and RSS-triggered review bookmarks. Both are bounded;
+# raw live-stream frames are never accumulated indefinitely.
+video_frame_buffers: dict[int, collections.deque[dict]] = {}
+video_last_sampled_at: dict[int, float] = {}
+video_bookmarks: collections.deque[dict] = collections.deque(
+    maxlen=config.MAX_VIDEO_BOOKMARKS
+)
+
 manager = ConnectionManager()
 
 lock = asyncio.Lock()

@@ -6,6 +6,8 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../models/heatmap_cell.dart';
 import '../providers/heatmap_provider.dart';
+import '../providers/video_bookmark_provider.dart';
+import '../../settings/providers/settings_provider.dart';
 import 'search_area_guidance.dart';
 
 Future<void> showSearchAreaDetailSheet(BuildContext context, String cellId) =>
@@ -27,14 +29,22 @@ class _LiveSearchAreaDetail extends ConsumerWidget {
         (cells) => cells[cellId] ?? HeatmapCell.unscanned(cellId),
       ),
     );
-    return SearchAreaDetailSheet(cell: cell);
+    return SearchAreaDetailSheet(
+      cell: cell,
+      videoReview: _VideoHistorySection(cellId: cellId),
+    );
   }
 }
 
 class SearchAreaDetailSheet extends StatelessWidget {
-  const SearchAreaDetailSheet({required this.cell, super.key});
+  const SearchAreaDetailSheet({
+    required this.cell,
+    this.videoReview,
+    super.key,
+  });
 
   final HeatmapCell cell;
+  final Widget? videoReview;
 
   @override
   Widget build(BuildContext context) {
@@ -66,6 +76,10 @@ class SearchAreaDetailSheet extends StatelessWidget {
           _InfoRow(label: '확인 드론', value: '${cell.droneCount}대'),
           if (cell.needsRecheck)
             _InfoRow(label: '반복 확인', value: '${cell.strongSignalCount}회'),
+          const SizedBox(height: AppSpacing.lg),
+          Text('당시 영상', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: AppSpacing.sm),
+          videoReview ?? const Text('이 구역에 보존된 영상이 없습니다.'),
           const SizedBox(height: AppSpacing.sm),
           Text(
             '이 정보는 수색 판단을 지원하며 구조 대상자의 위치를 확정하지 않습니다.',
@@ -75,6 +89,98 @@ class SearchAreaDetailSheet extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _VideoHistorySection extends ConsumerWidget {
+  const _VideoHistorySection({required this.cellId});
+
+  final String cellId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bookmarks = ref.watch(videoBookmarksProvider(cellId));
+    return bookmarks.when(
+      data: (items) => items.isEmpty
+          ? const Text('이 구역에 보존된 영상이 없습니다.')
+          : _VideoReviewCard(
+              bookmarkId: items.first.bookmarkId,
+              frameCount: items.first.frameCount,
+              baseUrl: ref.read(settingsProvider).baseUrl,
+            ),
+      loading: () => const LinearProgressIndicator(),
+      error: (_, _) => const Text('영상 기록을 불러오지 못했습니다.'),
+    );
+  }
+}
+
+class _VideoReviewCard extends StatefulWidget {
+  const _VideoReviewCard({
+    required this.bookmarkId,
+    required this.frameCount,
+    required this.baseUrl,
+  });
+
+  final String bookmarkId;
+  final int frameCount;
+  final String baseUrl;
+
+  @override
+  State<_VideoReviewCard> createState() => _VideoReviewCardState();
+}
+
+class _VideoReviewCardState extends State<_VideoReviewCard> {
+  var _frameIndex = 0;
+
+  String get _frameUrl =>
+      '${widget.baseUrl}/drones/video/bookmarks/${widget.bookmarkId}/frames/$_frameIndex';
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.frameCount == 0) {
+      return const Text('신호 발생 시점에 수신된 카메라 장면이 없습니다.');
+    }
+    return Column(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Image.network(
+              _frameUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) =>
+                  const Center(child: Text('장면을 표시할 수 없습니다.')),
+            ),
+          ),
+        ),
+        if (widget.frameCount > 1)
+          Row(
+            children: [
+              IconButton(
+                tooltip: '이전 장면',
+                onPressed: _frameIndex == 0
+                    ? null
+                    : () => setState(() => _frameIndex--),
+                icon: const Icon(Icons.chevron_left),
+              ),
+              Expanded(
+                child: Text(
+                  '${_frameIndex + 1} / ${widget.frameCount}',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              IconButton(
+                tooltip: '다음 장면',
+                onPressed: _frameIndex == widget.frameCount - 1
+                    ? null
+                    : () => setState(() => _frameIndex++),
+                icon: const Icon(Icons.chevron_right),
+              ),
+            ],
+          ),
+      ],
     );
   }
 }

@@ -35,3 +35,20 @@ MAX_DETECTIONS: int = 50
 MAX_SIGNAL_READINGS: int = max(
     1, int(os.getenv("MAX_SIGNAL_READINGS", "10000"))
 )
+
+# Camera review history. The live stream can be much faster, but only a small
+# number of frames per second is retained for operational review. Bookmarks
+# preserve the configured interval around the moment a cell first becomes a
+# recheck area.
+VIDEO_HISTORY_SAMPLE_INTERVAL: float = max(
+    0.1, float(os.getenv("VIDEO_HISTORY_SAMPLE_INTERVAL", "1.0"))
+)
+VIDEO_BOOKMARK_PRE_SECONDS: float = max(
+    0.0, float(os.getenv("VIDEO_BOOKMARK_PRE_SECONDS", "10.0"))
+)
+VIDEO_BOOKMARK_POST_SECONDS: float = max(
+    0.0, float(os.getenv("VIDEO_BOOKMARK_POST_SECONDS", "10.0"))
+)
+MAX_VIDEO_BOOKMARKS: int = max(
+    1, int(os.getenv("MAX_VIDEO_BOOKMARKS", "50"))
+)

@@ -15,12 +15,29 @@ Why WebSocket instead of POST-per-frame:
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Path, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Path, Query, Response, WebSocket, WebSocketDisconnect
 
 import services
 import state
+import video_history
 
 router = APIRouter(prefix="/drones", tags=["video"])
+
+
+@router.get("/video/bookmarks")
+async def list_video_bookmarks(cell_id: str | None = Query(default=None)) -> list:
+    return video_history.list_bookmarks(cell_id)
+
+
+@router.get("/video/bookmarks/{bookmark_id}/frames/{frame_index}")
+async def get_video_bookmark_frame(
+    bookmark_id: str,
+    frame_index: int = Path(..., ge=0),
+) -> Response:
+    frame = video_history.get_frame(bookmark_id, frame_index)
+    if frame is None:
+        raise HTTPException(status_code=404, detail="Video review frame not found.")
+    return Response(content=frame, media_type="image/jpeg")
 
 
 @router.websocket("/{drone_id}/video")
