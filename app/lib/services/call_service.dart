@@ -12,10 +12,11 @@ import '../config.dart';
 enum CallStatus { idle, connecting, active }
 
 class CallState {
-  const CallState(this.status, {this.sessionId});
+  const CallState(this.status, {this.sessionId, this.isTransmitting = false});
 
   final CallStatus status;
   final String? sessionId;
+  final bool isTransmitting;
 }
 
 final callServiceProvider = StateNotifierProvider<CallService, CallState>(
@@ -57,6 +58,7 @@ class CallService extends StateNotifier<CallState> {
         'audio': true,
         'video': false,
       });
+      _setMicrophoneEnabled(false);
       _peer = await createPeerConnection({'iceServers': <dynamic>[]});
       for (final track in _localStream!.getAudioTracks()) {
         await _peer!.addTrack(track, _localStream!);
@@ -141,8 +143,32 @@ class CallService extends StateNotifier<CallState> {
     _signaling?.sink.add(jsonEncode(message));
   }
 
+  void startTransmitting() {
+    if (_disposed || state.status != CallStatus.active) return;
+    _setMicrophoneEnabled(true);
+    state = CallState(
+      state.status,
+      sessionId: state.sessionId,
+      isTransmitting: true,
+    );
+  }
+
+  void stopTransmitting() {
+    if (_disposed || !state.isTransmitting) return;
+    _setMicrophoneEnabled(false);
+    state = CallState(state.status, sessionId: state.sessionId);
+  }
+
+  void _setMicrophoneEnabled(bool enabled) {
+    for (final track
+        in _localStream?.getAudioTracks() ?? <MediaStreamTrack>[]) {
+      track.enabled = enabled;
+    }
+  }
+
   Future<void> endCall({bool notifyPeer = true}) async {
     if (_disposed || state.status == CallStatus.idle) return;
+    _setMicrophoneEnabled(false);
     if (notifyPeer) _send({'type': 'call-end'});
     state = const CallState(CallStatus.idle);
     await _signalingSubscription?.cancel();
