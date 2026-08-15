@@ -423,6 +423,8 @@ String _entryTimeLabel(LogEntry entry) {
 }
 
 String _clockLabel(DateTime timestamp) =>
+    '${timestamp.month.toString().padLeft(2, '0')}/'
+    '${timestamp.day.toString().padLeft(2, '0')} '
     '${timestamp.hour.toString().padLeft(2, '0')}:'
     '${timestamp.minute.toString().padLeft(2, '0')}:'
     '${timestamp.second.toString().padLeft(2, '0')}';
