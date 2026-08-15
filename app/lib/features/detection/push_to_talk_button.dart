@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 
-class PushToTalkButton extends StatelessWidget {
+class PushToTalkButton extends StatefulWidget {
   const PushToTalkButton({
     super.key,
     required this.enabled,
@@ -17,24 +17,55 @@ class PushToTalkButton extends StatelessWidget {
   final VoidCallback onTransmitEnd;
 
   @override
+  State<PushToTalkButton> createState() => _PushToTalkButtonState();
+}
+
+class _PushToTalkButtonState extends State<PushToTalkButton> {
+  bool _holding = false;
+
+  @override
+  void didUpdateWidget(PushToTalkButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.enabled && !widget.enabled) _stopTransmitting();
+  }
+
+  @override
+  void dispose() {
+    _stopTransmitting();
+    super.dispose();
+  }
+
+  void _startTransmitting() {
+    if (_holding) return;
+    _holding = true;
+    widget.onTransmitStart();
+  }
+
+  void _stopTransmitting() {
+    if (!_holding) return;
+    _holding = false;
+    widget.onTransmitEnd();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final label = isTransmitting ? '말하는 중 · 놓으면 음소거' : '길게 눌러 말하기';
+    final label = widget.isTransmitting ? '말하는 중 · 놓으면 음소거' : '길게 눌러 말하기';
     return Semantics(
       button: true,
-      enabled: enabled,
+      enabled: widget.enabled,
       label: label,
       child: GestureDetector(
-        onLongPressStart: enabled ? (_) => onTransmitStart() : null,
-        onLongPressEnd: enabled ? (_) => onTransmitEnd() : null,
-        onLongPressCancel: enabled ? onTransmitEnd : null,
+        onLongPressStart: widget.enabled ? (_) => _startTransmitting() : null,
+        onLongPressEnd: widget.enabled ? (_) => _stopTransmitting() : null,
+        onLongPressCancel: widget.enabled ? _stopTransmitting : null,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           width: 220,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           decoration: BoxDecoration(
-            color: isTransmitting
+            color: widget.isTransmitting
                 ? AppColors.danger
-                : enabled
+                : widget.enabled
                 ? AppColors.navy
                 : Colors.grey.shade400,
             borderRadius: BorderRadius.circular(14),
@@ -44,7 +75,7 @@ class PushToTalkButton extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                isTransmitting ? Icons.mic : Icons.mic_off,
+                widget.isTransmitting ? Icons.mic : Icons.mic_off,
                 color: Colors.white,
               ),
               const SizedBox(width: 8),

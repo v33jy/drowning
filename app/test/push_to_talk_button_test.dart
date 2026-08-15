@@ -46,4 +46,23 @@ void main() {
     await tester.longPress(find.text('길게 눌러 말하기'));
     expect(starts, 0);
   });
+
+  testWidgets('stops transmitting when removed during a hold', (tester) async {
+    var stops = 0;
+    Widget button() => MaterialApp(
+      home: PushToTalkButton(
+        enabled: true,
+        isTransmitting: true,
+        onTransmitStart: () {},
+        onTransmitEnd: () => stops++,
+      ),
+    );
+    await tester.pumpWidget(button());
+
+    await tester.startGesture(tester.getCenter(find.text('말하는 중 · 놓으면 음소거')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpWidget(const SizedBox.shrink());
+
+    expect(stops, 1);
+  });
 }

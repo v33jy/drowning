@@ -36,4 +36,23 @@ void main() {
     await tester.pump();
     expect(stops, 1);
   });
+
+  testWidgets('PTT 중 화면이 닫히면 송신을 중단한다', (tester) async {
+    var stops = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SurvivorPushToTalkButton(
+          isTransmitting: true,
+          onTransmitStart: () {},
+          onTransmitEnd: () => stops++,
+        ),
+      ),
+    );
+
+    await tester.startGesture(tester.getCenter(find.text('말하는 중 · 놓으면 음소거')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpWidget(const SizedBox.shrink());
+
+    expect(stops, 1);
+  });
 }
