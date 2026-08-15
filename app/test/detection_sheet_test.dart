@@ -1,5 +1,6 @@
 import 'package:control_app/features/detection/detection_sheet.dart';
 import 'package:control_app/models/detection_event.dart';
+import 'package:control_app/services/call_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +18,31 @@ void main() {
   Future<void> pumpSheet(WidgetTester tester) async {
     await tester.pumpWidget(
       ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showDetectionSheet(context, event),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> pumpSheetWithCallState(
+    WidgetTester tester,
+    CallState callState,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          callServiceProvider.overrideWith((ref) => TestCallService(callState)),
+        ],
         child: MaterialApp(
           home: Scaffold(
             body: Builder(
@@ -81,4 +107,38 @@ void main() {
 
     expect(find.text('outcome:minimized'), findsOneWidget);
   });
+
+  testWidgets('재연결 상태와 진행 횟수를 표시한다', (tester) async {
+    await pumpSheetWithCallState(
+      tester,
+      const CallState(
+        CallStatus.reconnecting,
+        sessionId: 'test-call',
+        retryAttempt: 2,
+      ),
+    );
+
+    expect(find.text('재연결 중'), findsOneWidget);
+    expect(find.text('연결 끊김 · 자동 재연결 2/3'), findsOneWidget);
+  });
+
+  testWidgets('자동 재연결 실패 후 수동 재시도 버튼을 표시한다', (tester) async {
+    await pumpSheetWithCallState(
+      tester,
+      const CallState(
+        CallStatus.disconnected,
+        sessionId: 'test-call',
+        message: '음성 연결에 실패했습니다. 다시 시도해 주세요.',
+      ),
+    );
+
+    expect(find.text('다시 연결'), findsOneWidget);
+    expect(find.textContaining('다시 시도해 주세요'), findsOneWidget);
+  });
+}
+
+class TestCallService extends CallService {
+  TestCallService(CallState initialState) {
+    state = initialState;
+  }
 }

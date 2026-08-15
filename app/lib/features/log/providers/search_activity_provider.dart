@@ -58,8 +58,24 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
             '음성 연결됨',
             Severity.ok,
           );
+        case CallStatus.reconnecting:
+          _append(
+            LogActivityKind.callConnecting,
+            _currentDroneId,
+            '음성 연결 끊김 · 자동 재연결 중',
+            Severity.warning,
+          );
+        case CallStatus.disconnected:
+          _append(
+            LogActivityKind.callEnded,
+            _currentDroneId,
+            '음성 연결 실패 · 수동 재시도 필요',
+            Severity.offline,
+          );
         case CallStatus.idle:
-          if (previous != null && previous.status != CallStatus.idle) {
+          if (previous != null &&
+              previous.status != CallStatus.idle &&
+              previous.status != CallStatus.disconnected) {
             _append(
               LogActivityKind.callEnded,
               _currentDroneId,

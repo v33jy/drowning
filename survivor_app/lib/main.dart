@@ -19,7 +19,7 @@ class ServerConfig {
       port == 443 ? 'wss://$host$path' : 'ws://$host:$port$path';
 }
 
-enum CallPhase { waiting, connecting, active }
+enum CallPhase { waiting, connecting, active, reconnecting, disconnected }
 
 class SurvivorCallController extends ChangeNotifier {
   CallPhase phase = CallPhase.waiting;
@@ -28,16 +28,24 @@ class SurvivorCallController extends ChangeNotifier {
   WebSocketChannel? _signaling;
   StreamSubscription<dynamic>? _listenerSubscription;
   StreamSubscription<dynamic>? _signalingSubscription;
-  Timer? _reconnectTimer;
+  Timer? _listenerReconnectTimer;
+  Timer? _callReconnectTimer;
   RTCPeerConnection? _peer;
   MediaStream? _localStream;
   final List<RTCIceCandidate> _pendingCandidates = [];
   bool _remoteDescriptionSet = false;
   bool _disposed = false;
+  bool _ending = false;
+  String? _sessionId;
+  int _retryAttempt = 0;
+  int _connectionGeneration = 0;
+  static const maxReconnectAttempts = 3;
+
+  int get retryAttempt => _retryAttempt;
 
   Future<void> start() async {
     if (_disposed) return;
-    _reconnectTimer?.cancel();
+    _listenerReconnectTimer?.cancel();
     try {
       _listener = WebSocketChannel.connect(
         Uri.parse(ServerConfig.ws('/survivors/listen')),
@@ -62,8 +70,8 @@ class SurvivorCallController extends ChangeNotifier {
     _listenerSubscription?.cancel();
     _listenerSubscription = null;
     _listener = null;
-    _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 3), start);
+    _listenerReconnectTimer?.cancel();
+    _listenerReconnectTimer = Timer(const Duration(seconds: 3), start);
   }
 
   Future<void> _handleIncoming(dynamic raw) async {
@@ -75,22 +83,32 @@ class SurvivorCallController extends ChangeNotifier {
   }
 
   Future<void> _answerCall(String sessionId) async {
+    _sessionId = sessionId;
+    _retryAttempt = 0;
     phase = CallPhase.connecting;
     notifyListeners();
 
-    final permission = await Permission.microphone.request();
-    if (!permission.isGranted) {
-      debugPrint('마이크 권한이 없어 통화를 받을 수 없습니다.');
-      phase = CallPhase.waiting;
-      notifyListeners();
-      return;
-    }
+    await _connectCall(sessionId);
+  }
+
+  Future<void> _connectCall(String sessionId) async {
+    final generation = ++_connectionGeneration;
 
     try {
-      _localStream = await navigator.mediaDevices.getUserMedia({
-        'audio': true,
-        'video': false,
-      });
+      if (_localStream == null) {
+        final permission = await Permission.microphone.request();
+        if (!permission.isGranted) {
+          phase = CallPhase.disconnected;
+          notifyListeners();
+          return;
+        }
+        _localStream = await navigator.mediaDevices.getUserMedia({
+          'audio': true,
+          'video': false,
+        });
+      }
+      await _closeCallConnection(keepLocalStream: true);
+      if (!_isCurrentCall(generation, sessionId)) return;
       _peer = await createPeerConnection({'iceServers': <dynamic>[]});
       for (final track in _localStream!.getAudioTracks()) {
         await _peer!.addTrack(track, _localStream!);
@@ -104,9 +122,9 @@ class SurvivorCallController extends ChangeNotifier {
         _handleSignal,
         onError: (Object error) {
           debugPrint('통화 signaling 연결 오류: $error');
-          endCall(notifyPeer: false);
+          _handleCallFailure(sessionId, generation);
         },
-        onDone: () => endCall(notifyPeer: false),
+        onDone: () => _handleCallFailure(sessionId, generation),
       );
 
       _peer!.onIceCandidate = (candidate) {
@@ -119,7 +137,7 @@ class SurvivorCallController extends ChangeNotifier {
         });
       };
       _peer!.onConnectionState = (connectionState) {
-        if (_disposed) return;
+        if (!_isCurrentCall(generation, sessionId)) return;
         if (connectionState ==
             RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
           phase = CallPhase.active;
@@ -128,13 +146,55 @@ class SurvivorCallController extends ChangeNotifier {
                 RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
             connectionState ==
                 RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
-          endCall(notifyPeer: false);
+          _handleCallFailure(sessionId, generation);
         }
       };
     } catch (error) {
       debugPrint('통화를 받을 준비를 하지 못했습니다: $error');
-      await endCall(notifyPeer: false);
+      await _handleCallFailure(sessionId, generation);
     }
+  }
+
+  bool _isCurrentCall(int generation, String sessionId) =>
+      !_disposed &&
+      !_ending &&
+      generation == _connectionGeneration &&
+      _sessionId == sessionId;
+
+  Future<void> _handleCallFailure(String sessionId, int generation) async {
+    if (!_isCurrentCall(generation, sessionId)) return;
+    _connectionGeneration++;
+    await _closeCallConnection(keepLocalStream: true);
+    if (_disposed || _ending || _sessionId != sessionId) return;
+    _retryAttempt++;
+    if (_retryAttempt > maxReconnectAttempts) {
+      _retryAttempt = maxReconnectAttempts;
+      await _closeCallConnection(keepLocalStream: false);
+      phase = CallPhase.disconnected;
+      notifyListeners();
+      return;
+    }
+    phase = CallPhase.reconnecting;
+    notifyListeners();
+    _callReconnectTimer?.cancel();
+    _callReconnectTimer = Timer(const Duration(seconds: 2), () {
+      if (!_disposed &&
+          phase == CallPhase.reconnecting &&
+          _sessionId == sessionId) {
+        _connectCall(sessionId);
+      }
+    });
+  }
+
+  Future<void> retryCall() async {
+    final sessionId = _sessionId;
+    if (_disposed || phase != CallPhase.disconnected || sessionId == null) {
+      return;
+    }
+    _retryAttempt = 0;
+    phase = CallPhase.connecting;
+    notifyListeners();
+    await _connectCall(sessionId);
   }
 
   Future<void> _handleSignal(dynamic raw) async {
@@ -177,22 +237,37 @@ class SurvivorCallController extends ChangeNotifier {
 
   Future<void> endCall({bool notifyPeer = true}) async {
     if (phase == CallPhase.waiting) return;
+    _ending = true;
+    _callReconnectTimer?.cancel();
+    _connectionGeneration++;
     if (notifyPeer) _send({'type': 'call-end'});
+    await _closeCallConnection(keepLocalStream: false);
     phase = CallPhase.waiting;
+    _sessionId = null;
+    _retryAttempt = 0;
     notifyListeners();
-    await _signalingSubscription?.cancel();
+    _ending = false;
+  }
+
+  Future<void> _closeCallConnection({required bool keepLocalStream}) async {
+    final subscription = _signalingSubscription;
+    final signaling = _signaling;
+    final peer = _peer;
     _signalingSubscription = null;
-    await _signaling?.sink.close();
     _signaling = null;
-    await _peer?.close();
     _peer = null;
-    for (final track in _localStream?.getTracks() ?? <MediaStreamTrack>[]) {
-      track.stop();
-    }
-    await _localStream?.dispose();
-    _localStream = null;
     _remoteDescriptionSet = false;
     _pendingCandidates.clear();
+    await subscription?.cancel();
+    await signaling?.sink.close();
+    await peer?.close();
+    if (!keepLocalStream) {
+      for (final track in _localStream?.getTracks() ?? <MediaStreamTrack>[]) {
+        track.stop();
+      }
+      await _localStream?.dispose();
+      _localStream = null;
+    }
   }
 
   @override
@@ -201,16 +276,13 @@ class SurvivorCallController extends ChangeNotifier {
       _send({'type': 'call-end'});
     }
     _disposed = true;
-    _reconnectTimer?.cancel();
+    _ending = true;
+    _connectionGeneration++;
+    _listenerReconnectTimer?.cancel();
+    _callReconnectTimer?.cancel();
     _listenerSubscription?.cancel();
     _listener?.sink.close();
-    _signalingSubscription?.cancel();
-    _signaling?.sink.close();
-    _peer?.close();
-    for (final track in _localStream?.getTracks() ?? <MediaStreamTrack>[]) {
-      track.stop();
-    }
-    _localStream?.dispose();
+    _closeCallConnection(keepLocalStream: false);
     super.dispose();
   }
 }
@@ -232,7 +304,10 @@ class SurvivorApp extends StatelessWidget {
 }
 
 class CallScreen extends StatefulWidget {
-  const CallScreen({super.key});
+  const CallScreen({super.key, this.controller, this.autoStart = true});
+
+  final SurvivorCallController? controller;
+  final bool autoStart;
 
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -240,16 +315,19 @@ class CallScreen extends StatefulWidget {
 
 class _CallScreenState extends State<CallScreen> {
   late final SurvivorCallController controller;
+  late final bool _ownsController;
 
   @override
   void initState() {
     super.initState();
-    controller = SurvivorCallController()..start();
+    _ownsController = widget.controller == null;
+    controller = widget.controller ?? SurvivorCallController();
+    if (widget.autoStart) controller.start();
   }
 
   @override
   void dispose() {
-    controller.dispose();
+    if (_ownsController) controller.dispose();
     super.dispose();
   }
 
@@ -273,16 +351,40 @@ class _CallScreenState extends State<CallScreen> {
                       CallPhase.waiting => '통화 대기 중',
                       CallPhase.connecting => '통화 연결 중',
                       CallPhase.active => '통화 중',
+                      CallPhase.reconnecting => '통화 재연결 중',
+                      CallPhase.disconnected => '통화 연결 끊김',
                     }, style: Theme.of(context).textTheme.headlineMedium),
+                    if (controller.phase == CallPhase.reconnecting) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        '자동 재연결 ${controller.retryAttempt}/'
+                        '${SurvivorCallController.maxReconnectAttempts}',
+                      ),
+                    ],
                     if (inCall) ...[
                       const SizedBox(height: 48),
                       FilledButton.icon(
                         style: FilledButton.styleFrom(
-                          backgroundColor: Theme.of(context).colorScheme.error,
+                          backgroundColor:
+                              controller.phase == CallPhase.disconnected
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.error,
                         ),
-                        onPressed: controller.endCall,
-                        icon: const Icon(Icons.call_end),
-                        label: const Text('통화 종료'),
+                        onPressed: controller.phase == CallPhase.reconnecting
+                            ? null
+                            : controller.phase == CallPhase.disconnected
+                            ? controller.retryCall
+                            : controller.endCall,
+                        icon: Icon(
+                          controller.phase == CallPhase.disconnected
+                              ? Icons.refresh
+                              : Icons.call_end,
+                        ),
+                        label: Text(
+                          controller.phase == CallPhase.disconnected
+                              ? '다시 연결'
+                              : '통화 종료',
+                        ),
                       ),
                     ],
                   ],
