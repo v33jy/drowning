@@ -378,7 +378,7 @@ class _LogTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    _timeLabel(entry.timestamp),
+                    _entryTimeLabel(entry),
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                 ],
@@ -410,6 +410,30 @@ class _LogTile extends StatelessWidget {
       builder: (context) => _DetectionDetailSheet(entry: entry),
     );
   }
+}
+
+String _entryTimeLabel(LogEntry entry) {
+  final call = entry.callDetails;
+  if (call == null) return _timeLabel(entry.timestamp);
+
+  final started = _clockLabel(call.startedAt);
+  final endedAt = call.endedAt;
+  if (endedAt == null) return '시작 $started';
+  return '시작 $started · 종료 ${_clockLabel(endedAt)} · ${_durationLabel(call.duration!)}';
+}
+
+String _clockLabel(DateTime timestamp) =>
+    '${timestamp.month.toString().padLeft(2, '0')}/'
+    '${timestamp.day.toString().padLeft(2, '0')} '
+    '${timestamp.hour.toString().padLeft(2, '0')}:'
+    '${timestamp.minute.toString().padLeft(2, '0')}:'
+    '${timestamp.second.toString().padLeft(2, '0')}';
+
+String _durationLabel(Duration duration) {
+  final minutes = duration.inMinutes;
+  final seconds = duration.inSeconds.remainder(60);
+  if (minutes == 0) return '$seconds초';
+  return '$minutes분 ${seconds.toString().padLeft(2, '0')}초';
 }
 
 IconData _entryIcon(LogEntry entry) {

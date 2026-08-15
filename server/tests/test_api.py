@@ -338,6 +338,7 @@ class CallWebSocketTests(ApiTestCase):
 
         with self.client.websocket_connect("/calls/call-1/control") as control_ws:
             with self.client.websocket_connect("/calls/call-1/survivor") as survivor_ws:
+                self.assertEqual(control_ws.receive_json(), {"type": "peer-ready"})
                 control_ws.send_json(offer)
                 self.assertEqual(survivor_ws.receive_json(), offer)
 
@@ -346,6 +347,7 @@ class CallWebSocketTests(ApiTestCase):
 
         with self.client.websocket_connect("/calls/call-1/control") as control_ws:
             with self.client.websocket_connect("/calls/call-1/survivor") as survivor_ws:
+                self.assertEqual(control_ws.receive_json(), {"type": "peer-ready"})
                 control_ws.send_json({"type": "call-end"})
                 self.assertEqual(survivor_ws.receive_json(), {"type": "call-end"})
 

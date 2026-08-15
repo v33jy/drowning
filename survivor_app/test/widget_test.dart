@@ -55,4 +55,27 @@ void main() {
 
     expect(stops, 1);
   });
+
+  testWidgets('통화 단계별 상태 문구를 표시한다', (tester) async {
+    final controller = SurvivorCallController();
+    await tester.pumpWidget(
+      MaterialApp(home: CallScreen(controller: controller, autoStart: false)),
+    );
+
+    expect(find.text('통화 대기 중'), findsOneWidget);
+    controller.dispose();
+  });
+
+  testWidgets('재연결 중에도 통화를 종료할 수 있다', (tester) async {
+    final controller = SurvivorCallController()..phase = CallPhase.reconnecting;
+    await tester.pumpWidget(
+      MaterialApp(home: CallScreen(controller: controller, autoStart: false)),
+    );
+
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '통화 종료'),
+    );
+    expect(button.onPressed, isNotNull);
+    controller.dispose();
+  });
 }

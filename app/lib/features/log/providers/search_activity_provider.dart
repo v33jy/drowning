@@ -7,12 +7,14 @@ import '../../control/providers/drones_provider.dart';
 import '../../control/providers/heatmap_provider.dart';
 import '../../detection/providers/detection_log_provider.dart';
 import '../models/log_entry.dart';
+import 'call_activity_recorder.dart';
 
 /// Records operator-relevant state transitions rather than every telemetry or
 /// RSS sample. This keeps the log useful as a search timeline.
 class SearchActivityNotifier extends Notifier<List<LogEntry>> {
   bool _searchStarted = false;
   bool _disposed = false;
+  final _callRecorder = CallActivityRecorder();
 
   @override
   List<LogEntry> build() {
@@ -42,31 +44,13 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
     });
 
     ref.listen(callServiceProvider, (previous, next) {
-      if (previous?.status == next.status) return;
-      switch (next.status) {
-        case CallStatus.connecting:
-          _append(
-            LogActivityKind.callConnecting,
-            _currentDroneId,
-            '음성 연결 시도',
-            Severity.warning,
-          );
-        case CallStatus.active:
-          _append(
-            LogActivityKind.callConnected,
-            _currentDroneId,
-            '음성 연결됨',
-            Severity.ok,
-          );
-        case CallStatus.idle:
-          if (previous != null && previous.status != CallStatus.idle) {
-            _append(
-              LogActivityKind.callEnded,
-              _currentDroneId,
-              '음성 연결 종료',
-              Severity.offline,
-            );
-          }
+      final entries = _callRecorder.recordTransition(
+        previous: previous,
+        next: next,
+        timestamp: DateTime.now(),
+      );
+      if (entries.isNotEmpty) {
+        state = [...state, ...entries.map(_callLogEntry)];
       }
     });
 
@@ -109,6 +93,16 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
   }
 
   int get _currentDroneId => ref.read(dronesProvider).keys.firstOrNull ?? 1;
+
+  LogEntry _callLogEntry(CallActivityRecord record) => LogEntry(
+    type: LogEntryType.activity,
+    activityKind: record.kind,
+    droneId: _currentDroneId,
+    timestamp: record.timestamp,
+    title: record.title,
+    severity: record.severity,
+    callDetails: record.details,
+  );
 
   void _append(
     LogActivityKind kind,
