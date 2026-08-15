@@ -22,6 +22,11 @@ class ServerConfig {
 enum CallPhase { waiting, connecting, active, reconnecting, disconnected }
 
 class SurvivorCallController extends ChangeNotifier {
+  SurvivorCallController({
+    this.connectionAttemptTimeout = const Duration(seconds: 10),
+  });
+
+  final Duration connectionAttemptTimeout;
   CallPhase phase = CallPhase.waiting;
 
   WebSocketChannel? _listener;
@@ -30,6 +35,7 @@ class SurvivorCallController extends ChangeNotifier {
   StreamSubscription<dynamic>? _signalingSubscription;
   Timer? _listenerReconnectTimer;
   Timer? _callReconnectTimer;
+  Timer? _callConnectionAttemptTimer;
   RTCPeerConnection? _peer;
   MediaStream? _localStream;
   final List<RTCIceCandidate> _pendingCandidates = [];
@@ -126,6 +132,9 @@ class SurvivorCallController extends ChangeNotifier {
         },
         onDone: () => _handleCallFailure(sessionId, generation),
       );
+      _callConnectionAttemptTimer = Timer(connectionAttemptTimeout, () {
+        _handleCallFailure(sessionId, generation);
+      });
 
       _peer!.onIceCandidate = (candidate) {
         if (candidate.candidate == null) return;
@@ -140,6 +149,8 @@ class SurvivorCallController extends ChangeNotifier {
         if (!_isCurrentCall(generation, sessionId)) return;
         if (connectionState ==
             RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+          _callConnectionAttemptTimer?.cancel();
+          _retryAttempt = 0;
           phase = CallPhase.active;
           notifyListeners();
         } else if (connectionState ==
@@ -258,6 +269,8 @@ class SurvivorCallController extends ChangeNotifier {
     _peer = null;
     _remoteDescriptionSet = false;
     _pendingCandidates.clear();
+    _callConnectionAttemptTimer?.cancel();
+    _callConnectionAttemptTimer = null;
     await subscription?.cancel();
     await signaling?.sink.close();
     await peer?.close();
@@ -280,6 +293,7 @@ class SurvivorCallController extends ChangeNotifier {
     _connectionGeneration++;
     _listenerReconnectTimer?.cancel();
     _callReconnectTimer?.cancel();
+    _callConnectionAttemptTimer?.cancel();
     _listenerSubscription?.cancel();
     _listener?.sink.close();
     _closeCallConnection(keepLocalStream: false);
@@ -370,9 +384,7 @@ class _CallScreenState extends State<CallScreen> {
                               ? Theme.of(context).colorScheme.primary
                               : Theme.of(context).colorScheme.error,
                         ),
-                        onPressed: controller.phase == CallPhase.reconnecting
-                            ? null
-                            : controller.phase == CallPhase.disconnected
+                        onPressed: controller.phase == CallPhase.disconnected
                             ? controller.retryCall
                             : controller.endCall,
                         icon: Icon(

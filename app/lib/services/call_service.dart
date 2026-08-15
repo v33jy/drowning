@@ -36,16 +36,19 @@ class CallService extends StateNotifier<CallState> {
   CallService({
     this.maxReconnectAttempts = 3,
     this.reconnectDelay = const Duration(seconds: 2),
+    this.connectionAttemptTimeout = const Duration(seconds: 10),
   }) : super(const CallState(CallStatus.idle));
 
   final int maxReconnectAttempts;
   final Duration reconnectDelay;
+  final Duration connectionAttemptTimeout;
 
   RTCPeerConnection? _peer;
   MediaStream? _localStream;
   WebSocketChannel? _signaling;
   StreamSubscription<dynamic>? _signalingSubscription;
   Timer? _reconnectTimer;
+  Timer? _connectionAttemptTimer;
   final List<RTCIceCandidate> _pendingCandidates = [];
   bool _remoteDescriptionSet = false;
   bool _disposed = false;
@@ -118,6 +121,13 @@ class CallService extends StateNotifier<CallState> {
         onDone: () =>
             _handleTransientFailure(sessionId, generation, '음성 연결이 끊겼습니다.'),
       );
+      _connectionAttemptTimer = Timer(connectionAttemptTimeout, () {
+        _handleTransientFailure(
+          sessionId,
+          generation,
+          '상대방의 연결을 기다리는 시간이 초과됐습니다.',
+        );
+      });
 
       _peer!.onIceCandidate = (candidate) {
         if (candidate.candidate == null) return;
@@ -132,6 +142,7 @@ class CallService extends StateNotifier<CallState> {
         if (!_isCurrent(generation, sessionId)) return;
         if (connectionState ==
             RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+          _connectionAttemptTimer?.cancel();
           state = CallState(CallStatus.active, sessionId: sessionId);
         } else if (connectionState ==
             RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
@@ -245,6 +256,8 @@ class CallService extends StateNotifier<CallState> {
     _peer = null;
     _remoteDescriptionSet = false;
     _pendingCandidates.clear();
+    _connectionAttemptTimer?.cancel();
+    _connectionAttemptTimer = null;
     await subscription?.cancel();
     await signaling?.sink.close();
     await peer?.close();
