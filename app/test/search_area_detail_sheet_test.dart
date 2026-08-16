@@ -1,5 +1,7 @@
 import 'package:control_app/features/control/widgets/search_area_detail_sheet.dart';
 import 'package:control_app/features/control/widgets/search_area_guidance.dart';
+import 'package:control_app/features/control/providers/grid_provider.dart';
+import 'package:control_app/models/grid_cell.dart';
 import 'package:control_app/models/heatmap_cell.dart';
 import 'package:control_app/models/video_bookmark.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +10,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:control_app/features/control/widgets/video_review_section.dart';
 
 void main() {
+  test('describes cells relative to the nearest configured landmark', () {
+    final label = locationLabelForCell(
+      cellId: 'F3',
+      labels: const {'F2': '신논현역 인근'},
+      grid: const {
+        'F2': CellBounds(
+          latMin: 37.50,
+          latMax: 37.51,
+          lngMin: 127.02,
+          lngMax: 127.03,
+        ),
+        'F3': CellBounds(
+          latMin: 37.50,
+          latMax: 37.51,
+          lngMin: 127.03,
+          lngMax: 127.04,
+        ),
+      },
+    );
+
+    expect(label, startsWith('신논현역 동쪽 약'));
+  });
+
   test('maps search status to responder-facing guidance', () {
     final cell = HeatmapCell(
       cellId: 'G4',
@@ -20,7 +45,7 @@ void main() {
 
     expect(guidance.statusLabel, '재확인 필요');
     expect(guidance.reason, contains('반복 확인'));
-    expect(guidance.action, contains('재수색'));
+    expect(guidance.action, contains('저고도'));
   });
 
   test('falls back to status guidance for a missing legacy reason', () {
@@ -45,32 +70,36 @@ void main() {
     );
   });
 
-  testWidgets('shows reason and action before measurement counts', (
-    tester,
-  ) async {
-    final cell = HeatmapCell(
-      cellId: 'G4',
-      colorHex: '#F57C00',
-      status: SearchAreaStatus.needsRecheck,
-      sampleCount: 7,
-      droneCount: 2,
-      strongSignalCount: 3,
-      lastUpdated: DateTime.now().toUtc(),
-    );
+  testWidgets(
+    'shows operational guidance without internal measurement counts',
+    (tester) async {
+      final cell = HeatmapCell(
+        cellId: 'G4',
+        colorHex: '#F57C00',
+        status: SearchAreaStatus.needsRecheck,
+        sampleCount: 7,
+        droneCount: 2,
+        strongSignalCount: 3,
+        lastUpdated: DateTime.now().toUtc(),
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(body: SearchAreaDetailSheet(cell: cell)),
-      ),
-    );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: SearchAreaDetailSheet(cell: cell)),
+        ),
+      );
 
-    expect(find.text('수색 구역 G4'), findsOneWidget);
-    expect(find.text('재확인 필요'), findsOneWidget);
-    expect(find.textContaining('권장 조치:'), findsOneWidget);
-    expect(find.text('측정 횟수'), findsOneWidget);
-    expect(find.text('확인 드론'), findsOneWidget);
-    expect(find.textContaining('위치를 확정하지 않습니다'), findsOneWidget);
-  });
+      expect(find.text('수색 구역 정보'), findsNothing);
+      expect(find.text('위치 정보 없음'), findsOneWidget);
+      expect(find.text('재확인 필요'), findsOneWidget);
+      expect(find.text('판단 이유'), findsNothing);
+      expect(find.textContaining('다음 행동 지침:'), findsNothing);
+      expect(find.textContaining('저고도로 다시 통과'), findsOneWidget);
+      expect(find.text('측정 횟수'), findsNothing);
+      expect(find.text('확인 드론'), findsNothing);
+      expect(find.textContaining('위치를 확정하지 않습니다'), findsNothing);
+    },
+  );
 
   testWidgets('offline demo does not request stored video', (tester) async {
     await tester.pumpWidget(

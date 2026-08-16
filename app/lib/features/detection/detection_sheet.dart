@@ -9,9 +9,10 @@ import '../../core/widgets/video_thumbnail.dart';
 import '../../models/detection_event.dart';
 import '../../services/call_service.dart';
 import '../control/providers/video_frame_provider.dart';
-import 'call_controls.dart';
+import '../control/providers/grid_provider.dart';
+import '../control/widgets/search_panel_components.dart';
+import 'detection_actions.dart';
 import 'providers/detection_log_provider.dart';
-import 'push_to_talk_button.dart';
 
 /// Result returned when the sheet closes, so [ControlScreen] knows whether
 /// to immediately open the next queued detection.
@@ -44,9 +45,16 @@ Future<DetectionOutcome?> showDetectionSheet(
 }
 
 class DetectionSheet extends ConsumerStatefulWidget {
-  const DetectionSheet({super.key, required this.event});
+  const DetectionSheet({
+    super.key,
+    required this.event,
+    this.onOutcome,
+    this.showCloseButton = true,
+  });
 
   final DetectionEvent event;
+  final ValueChanged<DetectionOutcome>? onOutcome;
+  final bool showCloseButton;
 
   @override
   ConsumerState<DetectionSheet> createState() => _DetectionSheetState();
@@ -63,7 +71,12 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
     ref
         .read(detectionLogProvider.notifier)
         .resolve(widget.event.detectionId, status);
-    Navigator.of(context).pop(outcome);
+    final onOutcome = widget.onOutcome;
+    if (onOutcome != null) {
+      onOutcome(outcome);
+    } else {
+      Navigator.of(context).pop(outcome);
+    }
   }
 
   Future<void> _confirmFalseAlarm() async {
@@ -90,18 +103,26 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
 
   void _minimize() {
     ref.read(callServiceProvider.notifier).endCall();
-    Navigator.of(context).pop(DetectionOutcome.minimized);
+    final onOutcome = widget.onOutcome;
+    if (onOutcome != null) {
+      onOutcome(DetectionOutcome.minimized);
+    } else {
+      Navigator.of(context).pop(DetectionOutcome.minimized);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final event = widget.event;
+    final locationLabel = locationLabelForCell(
+      cellId: event.cellId,
+      labels: ref.watch(gridLocationLabelProvider),
+      grid: ref.watch(gridDefProvider),
+    );
     final elapsed = _elapsedLabel(event.timestamp);
     final frameB64 = ref.watch(
       videoFrameProvider.select((m) => m[event.droneId]),
     );
-    final callState = ref.watch(callServiceProvider);
-    final isThisCall = callState.sessionId == event.callSessionId;
     final videoHeight = math.min(
       340.0,
       MediaQuery.sizeOf(context).height * 0.46,
@@ -112,102 +133,50 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '드론 #${event.droneId} · Cell ${event.cellId}',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              Text(elapsed, style: Theme.of(context).textTheme.labelSmall),
-              const SizedBox(width: AppSpacing.sm),
-              // 오탐 처리/최소화 — both occasional, secondary actions, so
-              // they live here as small icons instead of full buttons
-              // competing with the one real decision in the body (구조
-              // 완료). 오탐 처리 still confirms via dialog before doing
-              // anything irreversible — only the entry point shrank.
-              InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: _confirmFalseAlarm,
-                child: const Padding(
-                  padding: EdgeInsets.all(2),
-                  child: Icon(
+          SearchStatusHeader(
+            status: '재확인 필요',
+            statusColor: AppColors.warning,
+            locationLabel: locationLabel,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(elapsed, style: Theme.of(context).textTheme.labelSmall),
+                IconButton(
+                  tooltip: '오탐 처리',
+                  onPressed: _confirmFalseAlarm,
+                  icon: const Icon(
                     Icons.flag_outlined,
                     size: 18,
                     color: AppColors.danger,
                   ),
                 ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: _minimize,
-                child: const Padding(
-                  padding: EdgeInsets.all(2),
-                  child: Icon(
-                    Icons.remove_circle_outline,
-                    size: 18,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            'RSS ${event.rssDbm.toStringAsFixed(1)} dBm',
-            style: Theme.of(context).textTheme.labelSmall,
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          // Keep the actions visible while giving the live feed most of the dialog.
-          VideoThumbnail(frameB64: frameB64, height: videoHeight),
-          const SizedBox(height: AppSpacing.lg),
-          if (event.callSessionId != null && isThisCall) ...[
-            Center(
-              child: PushToTalkButton(
-                enabled: callState.status == CallStatus.active,
-                isTransmitting: callState.isTransmitting,
-                onTransmitStart: ref
-                    .read(callServiceProvider.notifier)
-                    .startTransmitting,
-                onTransmitEnd: ref
-                    .read(callServiceProvider.notifier)
-                    .stopTransmitting,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Center(
-              child: Text(
-                callState.status == CallStatus.active
-                    ? '평소에는 마이크가 꺼져 있습니다'
-                    : '통화가 연결되면 사용할 수 있습니다',
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-          ],
-          Align(
-            alignment: Alignment.center,
-            child: Wrap(
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.sm,
-              alignment: WrapAlignment.center,
-              children: [
-                if (event.callSessionId != null)
-                  CallControls(sessionId: event.callSessionId!),
-                SizedBox(
-                  width: 180,
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.success,
+                if (widget.showCloseButton)
+                  IconButton(
+                    tooltip: '닫기',
+                    onPressed: _minimize,
+                    icon: Icon(
+                      widget.onOutcome == null
+                          ? Icons.remove_circle_outline
+                          : Icons.close,
+                      size: 20,
+                      color: AppColors.textSecondary,
                     ),
-                    onPressed: () => _resolve(DetectionOutcome.rescued),
-                    child: const Text('구조 완료'),
                   ),
-                ),
               ],
             ),
+          ),
+          const SearchActionSummary(
+            action: '해당 위치를 저고도로 다시 통과하세요.',
+            reason: '같은 위치에서 신호가 반복되어 추가 확인이 필요합니다.',
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Text('현장 영상', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: AppSpacing.sm),
+          VideoThumbnail(frameB64: frameB64, height: videoHeight),
+          const SizedBox(height: AppSpacing.md),
+          DetectionActions(
+            callSessionId: event.callSessionId,
+            onRescued: () => _resolve(DetectionOutcome.rescued),
           ),
         ],
       ),

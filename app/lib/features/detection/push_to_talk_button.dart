@@ -49,7 +49,7 @@ class _PushToTalkButtonState extends State<PushToTalkButton> {
 
   @override
   Widget build(BuildContext context) {
-    final label = widget.isTransmitting ? '말하는 중 · 놓으면 음소거' : '길게 눌러 말하기';
+    final label = widget.isTransmitting ? '음성 전달 중' : '누르고 말하기';
     return Semantics(
       button: true,
       enabled: widget.enabled,
@@ -60,35 +60,23 @@ class _PushToTalkButtonState extends State<PushToTalkButton> {
         onLongPressCancel: widget.enabled ? _stopTransmitting : null,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
-          width: 220,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          width: 32,
+          height: 32,
           decoration: BoxDecoration(
             color: widget.isTransmitting
                 ? AppColors.danger
                 : widget.enabled
                 ? AppColors.navy
-                : Colors.grey.shade400,
-            borderRadius: BorderRadius.circular(14),
+                : Colors.transparent,
+            shape: BoxShape.circle,
+            border: widget.enabled || widget.isTransmitting
+                ? null
+                : Border.all(color: AppColors.border),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                widget.isTransmitting ? Icons.mic : Icons.mic_off,
-                color: Colors.white,
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
+          child: Icon(
+            widget.isTransmitting ? Icons.mic : Icons.mic_none,
+            color: widget.enabled ? Colors.white : AppColors.textSecondary,
+            size: 17,
           ),
         ),
       ),

@@ -14,6 +14,11 @@ class LatLngToCellIdTests(unittest.TestCase):
         mid_lng = (config.LNG_MIN + config.LNG_MAX) / 2
         self.assertIsNotNone(latlng_to_cell_id(mid_lat, mid_lng))
 
+    def test_grid_definition_includes_responder_facing_landmark(self):
+        cell = next(item for item in grid_definition() if item["cell_id"] == "F2")
+
+        self.assertEqual(cell["location_label"], "신논현역 인근")
+
     def test_outside_grid_returns_none(self):
         self.assertIsNone(latlng_to_cell_id(config.LAT_MIN - 1, config.LNG_MIN))
         self.assertIsNone(latlng_to_cell_id(config.LAT_MIN, config.LNG_MAX + 1))
@@ -28,6 +33,15 @@ class GridDefinitionTests(unittest.TestCase):
     def test_cell_count_matches_grid_size(self):
         cells = grid_definition()
         self.assertEqual(len(cells), config.GRID_ROWS * config.GRID_COLS)
+
+    def test_default_landmark_is_not_applied_to_a_custom_grid(self):
+        self.assertEqual(config._load_grid_landmarks(None, False), {})
+
+    def test_explicit_landmark_is_kept_for_a_custom_grid(self):
+        self.assertEqual(
+            config._load_grid_landmarks('{"A0":"현장 지휘소"}', False),
+            {"A0": "현장 지휘소"},
+        )
 
 
 class HeatmapStateTests(unittest.TestCase):

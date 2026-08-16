@@ -1,15 +1,47 @@
+import json
 import os
 
 # ---------------------------------------------------------------------------
 # Grid configuration — override via environment variables if needed.
 # The grid divides the operation area into rows × cols cells.
 # ---------------------------------------------------------------------------
-LAT_MIN: float = float(os.getenv("GRID_LAT_MIN", "37.490"))
-LAT_MAX: float = float(os.getenv("GRID_LAT_MAX", "37.515"))
-LNG_MIN: float = float(os.getenv("GRID_LNG_MIN", "127.020"))
-LNG_MAX: float = float(os.getenv("GRID_LNG_MAX", "127.040"))
-GRID_ROWS: int = int(os.getenv("GRID_ROWS", "10"))
-GRID_COLS: int = int(os.getenv("GRID_COLS", "10"))
+_DEFAULT_LAT_MIN = 37.490
+_DEFAULT_LAT_MAX = 37.515
+_DEFAULT_LNG_MIN = 127.020
+_DEFAULT_LNG_MAX = 127.040
+_DEFAULT_GRID_ROWS = 10
+_DEFAULT_GRID_COLS = 10
+
+LAT_MIN: float = float(os.getenv("GRID_LAT_MIN", str(_DEFAULT_LAT_MIN)))
+LAT_MAX: float = float(os.getenv("GRID_LAT_MAX", str(_DEFAULT_LAT_MAX)))
+LNG_MIN: float = float(os.getenv("GRID_LNG_MIN", str(_DEFAULT_LNG_MIN)))
+LNG_MAX: float = float(os.getenv("GRID_LNG_MAX", str(_DEFAULT_LNG_MAX)))
+GRID_ROWS: int = int(os.getenv("GRID_ROWS", str(_DEFAULT_GRID_ROWS)))
+GRID_COLS: int = int(os.getenv("GRID_COLS", str(_DEFAULT_GRID_COLS)))
+
+# Responder-facing names for grid cells. Configure these during operation-area
+# setup so the UI can use stable landmarks without depending on live geocoding.
+_uses_default_grid = (
+    LAT_MIN == _DEFAULT_LAT_MIN
+    and LAT_MAX == _DEFAULT_LAT_MAX
+    and LNG_MIN == _DEFAULT_LNG_MIN
+    and LNG_MAX == _DEFAULT_LNG_MAX
+    and GRID_ROWS == _DEFAULT_GRID_ROWS
+    and GRID_COLS == _DEFAULT_GRID_COLS
+)
+_configured_landmarks = os.getenv("GRID_LANDMARKS")
+
+
+def _load_grid_landmarks(
+    configured_landmarks: str | None,
+    uses_default_grid: bool,
+) -> dict[str, str]:
+    if configured_landmarks is not None:
+        return json.loads(configured_landmarks)
+    return {"F2": "신논현역 인근"} if uses_default_grid else {}
+
+
+GRID_LANDMARKS = _load_grid_landmarks(_configured_landmarks, _uses_default_grid)
 
 # Preliminary search-area classification. These are operational tuning values,
 # not validated probabilities; field tests should calibrate them per radio and

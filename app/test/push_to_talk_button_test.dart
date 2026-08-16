@@ -20,7 +20,7 @@ void main() {
     );
 
     final gesture = await tester.startGesture(
-      tester.getCenter(find.text('길게 눌러 말하기')),
+      tester.getCenter(find.bySemanticsLabel('누르고 말하기')),
     );
     await tester.pump(const Duration(milliseconds: 600));
     expect(starts, 1);
@@ -43,7 +43,7 @@ void main() {
       ),
     );
 
-    await tester.longPress(find.text('길게 눌러 말하기'));
+    await tester.longPress(find.bySemanticsLabel('누르고 말하기'));
     expect(starts, 0);
   });
 
@@ -59,7 +59,9 @@ void main() {
     );
     await tester.pumpWidget(button());
 
-    await tester.startGesture(tester.getCenter(find.text('말하는 중 · 놓으면 음소거')));
+    await tester.startGesture(
+      tester.getCenter(find.bySemanticsLabel('음성 전달 중')),
+    );
     await tester.pump(const Duration(milliseconds: 600));
     await tester.pumpWidget(const SizedBox.shrink());
 
