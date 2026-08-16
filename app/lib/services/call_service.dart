@@ -8,10 +8,11 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../config.dart';
+import 'microphone_permission_guidance.dart';
+
+export 'microphone_permission_guidance.dart' show CallRecoveryAction;
 
 enum CallStatus { idle, connecting, active, reconnecting, disconnected }
-
-enum CallRecoveryAction { retry, openMicrophoneSettings }
 
 @immutable
 class CallState {
@@ -102,16 +103,12 @@ class CallService extends StateNotifier<CallState> {
       if (_localStream == null) {
         final permission = await Permission.microphone.request();
         if (!permission.isGranted) {
-          final requiresSettings = permission.isPermanentlyDenied;
+          final guidance = MicrophonePermissionGuidance.fromStatus(permission);
           state = CallState(
             CallStatus.disconnected,
             sessionId: sessionId,
-            message: requiresSettings
-                ? '마이크 권한이 꺼져 있습니다. 기기 설정에서 권한을 허용하세요.'
-                : '통화하려면 마이크 권한이 필요합니다.',
-            recoveryAction: requiresSettings
-                ? CallRecoveryAction.openMicrophoneSettings
-                : CallRecoveryAction.retry,
+            message: guidance.message,
+            recoveryAction: guidance.recoveryAction,
           );
           return;
         }
