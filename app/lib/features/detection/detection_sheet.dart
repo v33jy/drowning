@@ -9,6 +9,8 @@ import '../../core/widgets/video_thumbnail.dart';
 import '../../models/detection_event.dart';
 import '../../services/call_service.dart';
 import '../control/providers/video_frame_provider.dart';
+import '../control/providers/grid_provider.dart';
+import '../control/widgets/search_panel_components.dart';
 import 'call_controls.dart';
 import 'microphone_input_indicator.dart';
 import 'providers/detection_log_provider.dart';
@@ -45,9 +47,16 @@ Future<DetectionOutcome?> showDetectionSheet(
 }
 
 class DetectionSheet extends ConsumerStatefulWidget {
-  const DetectionSheet({super.key, required this.event});
+  const DetectionSheet({
+    super.key,
+    required this.event,
+    this.onOutcome,
+    this.showCloseButton = true,
+  });
 
   final DetectionEvent event;
+  final ValueChanged<DetectionOutcome>? onOutcome;
+  final bool showCloseButton;
 
   @override
   ConsumerState<DetectionSheet> createState() => _DetectionSheetState();
@@ -64,7 +73,12 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
     ref
         .read(detectionLogProvider.notifier)
         .resolve(widget.event.detectionId, status);
-    Navigator.of(context).pop(outcome);
+    final onOutcome = widget.onOutcome;
+    if (onOutcome != null) {
+      onOutcome(outcome);
+    } else {
+      Navigator.of(context).pop(outcome);
+    }
   }
 
   Future<void> _confirmFalseAlarm() async {
@@ -91,12 +105,22 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
 
   void _minimize() {
     ref.read(callServiceProvider.notifier).endCall();
-    Navigator.of(context).pop(DetectionOutcome.minimized);
+    final onOutcome = widget.onOutcome;
+    if (onOutcome != null) {
+      onOutcome(DetectionOutcome.minimized);
+    } else {
+      Navigator.of(context).pop(DetectionOutcome.minimized);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final event = widget.event;
+    final locationLabel = locationLabelForCell(
+      cellId: event.cellId,
+      labels: ref.watch(gridLocationLabelProvider),
+      grid: ref.watch(gridDefProvider),
+    );
     final elapsed = _elapsedLabel(event.timestamp);
     final frameB64 = ref.watch(
       videoFrameProvider.select((m) => m[event.droneId]),
@@ -113,109 +137,116 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '드론 #${event.droneId} · Cell ${event.cellId}',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              Text(elapsed, style: Theme.of(context).textTheme.labelSmall),
-              const SizedBox(width: AppSpacing.sm),
-              // 오탐 처리/최소화 — both occasional, secondary actions, so
-              // they live here as small icons instead of full buttons
-              // competing with the one real decision in the body (구조
-              // 완료). 오탐 처리 still confirms via dialog before doing
-              // anything irreversible — only the entry point shrank.
-              InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: _confirmFalseAlarm,
-                child: const Padding(
-                  padding: EdgeInsets.all(2),
-                  child: Icon(
+          SearchStatusHeader(
+            status: '재확인 필요',
+            statusColor: AppColors.warning,
+            locationLabel: locationLabel,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(elapsed, style: Theme.of(context).textTheme.labelSmall),
+                IconButton(
+                  tooltip: '오탐 처리',
+                  onPressed: _confirmFalseAlarm,
+                  icon: const Icon(
                     Icons.flag_outlined,
                     size: 18,
                     color: AppColors.danger,
                   ),
                 ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: _minimize,
-                child: const Padding(
-                  padding: EdgeInsets.all(2),
-                  child: Icon(
-                    Icons.remove_circle_outline,
-                    size: 18,
-                    color: AppColors.textSecondary,
+                if (widget.showCloseButton)
+                  IconButton(
+                    tooltip: '닫기',
+                    onPressed: _minimize,
+                    icon: Icon(
+                      widget.onOutcome == null
+                          ? Icons.remove_circle_outline
+                          : Icons.close,
+                      size: 20,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            'RSS ${event.rssDbm.toStringAsFixed(1)} dBm',
-            style: Theme.of(context).textTheme.labelSmall,
+          const SearchActionSummary(
+            action: '해당 위치를 저고도로 다시 통과하세요.',
+            reason: '같은 위치에서 신호가 반복되어 추가 확인이 필요합니다.',
           ),
           const SizedBox(height: AppSpacing.lg),
-          // Keep the actions visible while giving the live feed most of the dialog.
+          Text('현장 영상', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: AppSpacing.sm),
           VideoThumbnail(frameB64: frameB64, height: videoHeight),
-          const SizedBox(height: AppSpacing.lg),
-          if (event.callSessionId != null && isThisCall) ...[
-            Center(
-              child: PushToTalkButton(
-                enabled: callState.status == CallStatus.active,
-                isTransmitting: callState.isTransmitting,
-                onTransmitStart: ref
-                    .read(callServiceProvider.notifier)
-                    .startTransmitting,
-                onTransmitEnd: ref
-                    .read(callServiceProvider.notifier)
-                    .stopTransmitting,
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            height: 40,
+            decoration: const BoxDecoration(
+              border: Border.symmetric(
+                horizontal: BorderSide(color: AppColors.border),
               ),
             ),
-            const SizedBox(height: AppSpacing.sm),
-            Center(
-              child: MicrophoneInputIndicator(
+            child: Row(
+              children: [
+                if (event.callSessionId != null) ...[
+                  Expanded(
+                    child: CallControls(sessionId: event.callSessionId!),
+                  ),
+                  const VerticalDivider(width: 1, indent: 9, endIndent: 9),
+                  SizedBox(
+                    width: 48,
+                    child: Center(
+                      child: PushToTalkButton(
+                        enabled:
+                            isThisCall && callState.status == CallStatus.active,
+                        isTransmitting: callState.isTransmitting,
+                        onTransmitStart: ref
+                            .read(callServiceProvider.notifier)
+                            .startTransmitting,
+                        onTransmitEnd: ref
+                            .read(callServiceProvider.notifier)
+                            .stopTransmitting,
+                      ),
+                    ),
+                  ),
+                ] else
+                  const Spacer(),
+              ],
+            ),
+          ),
+          if (event.callSessionId != null &&
+              isThisCall &&
+              callState.status == CallStatus.disconnected) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              callState.message ?? '연결이 끊겼습니다. 다시 시도해 주세요.',
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: AppColors.danger),
+            ),
+          ],
+          if (event.callSessionId != null && isThisCall) ...[
+            if (callState.status == CallStatus.active) ...[
+              const SizedBox(height: AppSpacing.xs),
+              MicrophoneInputIndicator(
                 status: callState.microphoneInputStatus,
                 level: callState.microphoneLevel,
               ),
-            ),
-            if (callState.microphoneInputStatus != MicrophoneInputStatus.idle)
-              const SizedBox(height: AppSpacing.sm),
-            Center(
-              child: Text(
-                callState.status == CallStatus.active
-                    ? '평소에는 마이크가 꺼져 있습니다'
-                    : '통화가 연결되면 사용할 수 있습니다',
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
+            ],
           ],
-          Align(
-            alignment: Alignment.center,
-            child: Wrap(
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.sm,
-              alignment: WrapAlignment.center,
-              children: [
-                if (event.callSessionId != null)
-                  CallControls(sessionId: event.callSessionId!),
-                SizedBox(
-                  width: 180,
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.success,
-                    ),
-                    onPressed: () => _resolve(DetectionOutcome.rescued),
-                    child: const Text('구조 완료'),
-                  ),
-                ),
-              ],
+          SizedBox(
+            width: double.infinity,
+            height: 40,
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                minimumSize: const Size.fromHeight(40),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                foregroundColor: AppColors.success,
+                alignment: Alignment.centerLeft,
+                shape: const RoundedRectangleBorder(),
+              ),
+              onPressed: () => _resolve(DetectionOutcome.rescued),
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('구조 완료'),
             ),
           ),
         ],

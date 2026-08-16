@@ -1,3 +1,4 @@
+import json
 import os
 
 # ---------------------------------------------------------------------------
@@ -10,6 +11,12 @@ LNG_MIN: float = float(os.getenv("GRID_LNG_MIN", "127.020"))
 LNG_MAX: float = float(os.getenv("GRID_LNG_MAX", "127.040"))
 GRID_ROWS: int = int(os.getenv("GRID_ROWS", "10"))
 GRID_COLS: int = int(os.getenv("GRID_COLS", "10"))
+
+# Responder-facing names for grid cells. Configure these during operation-area
+# setup so the UI can use stable landmarks without depending on live geocoding.
+GRID_LANDMARKS: dict[str, str] = json.loads(
+    os.getenv("GRID_LANDMARKS", '{"F2":"신논현역 인근"}')
+)
 
 # Preliminary search-area classification. These are operational tuning values,
 # not validated probabilities; field tests should calibrate them per radio and

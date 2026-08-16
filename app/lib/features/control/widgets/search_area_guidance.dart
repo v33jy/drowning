@@ -80,7 +80,7 @@ const _statusPresentation = <SearchAreaStatus, _StatusPresentation>{
   SearchAreaStatus.needsRecheck: _StatusPresentation(
     label: '재확인 필요',
     defaultReasonCode: 'repeated_strong_signal',
-    action: '주변 구역을 재수색하고 현장 확인을 검토하세요.',
+    action: '해당 위치를 저고도로 다시 통과하세요.',
     color: AppColors.warning,
     icon: Icons.warning_amber_outlined,
   ),

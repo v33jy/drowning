@@ -64,7 +64,7 @@ void main() {
     await pumpSheet(tester);
 
     expect(find.text('구조 완료'), findsOneWidget);
-    expect(find.text('전화 연결'), findsOneWidget);
+    expect(find.text('음성 연결'), findsOneWidget);
     expect(find.byIcon(Icons.flag_outlined), findsOneWidget);
     expect(find.byIcon(Icons.remove_circle_outline), findsOneWidget);
   });
@@ -135,7 +135,7 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    expect(find.text('길게 눌러 말하기'), findsNothing);
+    expect(find.text('누르고 말하기'), findsNothing);
     expect(find.text('통화가 연결되면 사용할 수 있습니다'), findsNothing);
   });
 
@@ -149,8 +149,7 @@ void main() {
       ),
     );
 
-    expect(find.text('재연결 중'), findsOneWidget);
-    expect(find.text('연결 끊김 · 자동 재연결 2/3'), findsOneWidget);
+    expect(find.text('재연결 2/3'), findsOneWidget);
   });
 
   testWidgets('자동 재연결 실패 후 수동 재시도 버튼을 표시한다', (tester) async {

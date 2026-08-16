@@ -65,7 +65,12 @@ def grid_definition() -> list[dict]:
     cells = []
     for row in range(config.GRID_ROWS):
         for col in range(config.GRID_COLS):
-            cells.append({"cell_id": _cell_id(row, col), "bounds": cell_bounds(row, col)})
+            cell_id = _cell_id(row, col)
+            cells.append({
+                "cell_id": cell_id,
+                "bounds": cell_bounds(row, col),
+                "location_label": config.GRID_LANDMARKS.get(cell_id),
+            })
     return cells
 
 

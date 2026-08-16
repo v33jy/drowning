@@ -14,6 +14,11 @@ class LatLngToCellIdTests(unittest.TestCase):
         mid_lng = (config.LNG_MIN + config.LNG_MAX) / 2
         self.assertIsNotNone(latlng_to_cell_id(mid_lat, mid_lng))
 
+    def test_grid_definition_includes_responder_facing_landmark(self):
+        cell = next(item for item in grid_definition() if item["cell_id"] == "F2")
+
+        self.assertEqual(cell["location_label"], "신논현역 인근")
+
     def test_outside_grid_returns_none(self):
         self.assertIsNone(latlng_to_cell_id(config.LAT_MIN - 1, config.LNG_MIN))
         self.assertIsNone(latlng_to_cell_id(config.LAT_MIN, config.LNG_MAX + 1))

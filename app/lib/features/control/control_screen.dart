@@ -8,6 +8,7 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/widgets/connection_badge.dart';
 import '../../core/widgets/queue_chip.dart';
 import '../../models/detection_event.dart';
+import '../../models/drone_state.dart';
 import '../../models/grid_cell.dart';
 import '../detection/detection_sheet.dart';
 import '../detection/providers/detection_log_provider.dart';
@@ -18,7 +19,6 @@ import 'providers/drones_provider.dart';
 import 'providers/grid_provider.dart';
 import 'providers/map_focus_provider.dart';
 import 'providers/ws_providers.dart';
-import 'widgets/drone_list_sheet.dart';
 import 'widgets/heatmap_painter.dart';
 import 'widgets/help_screen.dart';
 import 'widgets/marker_layer.dart';
@@ -27,8 +27,7 @@ import 'widgets/search_area_detail_sheet.dart';
 
 enum _ControlMenuItem { log, help, settings }
 
-/// 관제 화면 — the app's sole home screen. 기록/설정 are reached via the
-/// menu icon (pushed routes with their own back button), not bottom tabs.
+/// 관제 화면 — 지도 중심의 현장 업무 화면.
 class ControlScreen extends ConsumerStatefulWidget {
   const ControlScreen({super.key});
 
@@ -39,7 +38,8 @@ class ControlScreen extends ConsumerStatefulWidget {
 class _ControlScreenState extends ConsumerState<ControlScreen> {
   final _mapController = MapController();
   bool _centeredOnFirstDrone = false;
-  bool _detectionSheetOpen = false;
+  DetectionEvent? _activeDetection;
+  String? _selectedCellId;
 
   @override
   void dispose() {
@@ -47,24 +47,25 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     super.dispose();
   }
 
-  // 시트가 열려 있는 동안엔 새 탐지가 끼어들지 않는다 — 큐 칩 숫자만
-  // 늘어나고, 현재 시트가 끝나야 다음 걸 연다.
-  Future<void> _openDetectionSheet(DetectionEvent event) async {
-    setState(() => _detectionSheetOpen = true);
-    final outcome = await showDetectionSheet(context, event);
+  void _openDetectionPanel(DetectionEvent event) {
+    setState(() => _activeDetection = event);
+  }
+
+  void _handleDetectionOutcome(DetectionOutcome outcome) {
     if (!mounted) return;
-    setState(() => _detectionSheetOpen = false);
-    if (outcome != DetectionOutcome.minimized) {
-      final queue = ref.read(pendingDetectionQueueProvider);
-      if (queue.isNotEmpty) _openDetectionSheet(queue.first);
+    if (outcome == DetectionOutcome.minimized) {
+      setState(() => _activeDetection = null);
+      return;
     }
+    final queue = ref.read(pendingDetectionQueueProvider);
+    setState(() => _activeDetection = queue.lastOrNull);
   }
 
   void _openSearchAreaDetail(LatLng point) {
     final grid = ref.read(gridDefProvider);
     final cellId = findContainingCellId(grid, point);
     if (cellId == null) return;
-    showSearchAreaDetailSheet(context, cellId);
+    setState(() => _selectedCellId = cellId);
   }
 
   @override
@@ -80,16 +81,15 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
       }
     });
 
-    // 큐가 "비어있음 → 있음"으로 바뀔 때만 자동으로 연다. 이미 최소화된 채로
-    // 대기 중인 상태에서 새 탐지가 추가되는 건(길이만 증가) 자동으로 다시 열지
-    // 않는다 — 큐 칩 숫자만 올라간다.
+    // 새 탐지는 항상 스택의 최상단 상세로 열고, 기존 미처리 탐지는 아래의
+    // 축약 알림으로 남긴다.
     ref.listen<List<DetectionEvent>>(pendingDetectionQueueProvider, (
       previous,
       next,
     ) {
-      final wasEmpty = previous == null || previous.isEmpty;
-      if (wasEmpty && next.isNotEmpty && !_detectionSheetOpen) {
-        _openDetectionSheet(next.first);
+      final added = next.length > (previous?.length ?? 0);
+      if (added && next.isNotEmpty) {
+        _openDetectionPanel(next.last);
       }
     });
 
@@ -103,130 +103,306 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
       }
     });
 
+    final activeDetection = _activeDetection;
+    final selectedCellId = _selectedCellId;
+    final pendingDetections = ref.watch(pendingDetectionQueueProvider);
+    final locationLabels = ref.watch(gridLocationLabelProvider);
+    final gridDefinition = ref.watch(gridDefProvider);
     return Scaffold(
-      body: Stack(
+      body: Column(
         children: [
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: const LatLng(37.5012, 127.0262), // 강남↔신논현 중간
-              initialZoom: 15,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all,
-              ),
-              onTap: (_, point) => _openSearchAreaDetail(point),
+          _OperationHeader(
+            queueCount: ref.watch(
+              pendingDetectionQueueProvider.select((q) => q.length),
             ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.drone.control_app',
-              ),
-              const HeatmapPainterLayer(),
-              const DroneMarkerLayer(),
-            ],
+            onQueueTap: () {
+              final queue = ref.read(pendingDetectionQueueProvider);
+              if (queue.isNotEmpty) _openDetectionPanel(queue.last);
+            },
+            onMenuSelected: (item) {
+              final route = switch (item) {
+                _ControlMenuItem.log => const LogScreen(),
+                _ControlMenuItem.help => const HelpScreen(),
+                _ControlMenuItem.settings => const SettingsScreen(),
+              };
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => route));
+            },
           ),
-          const Positioned(top: 0, left: 0, right: 0, child: OfflineBanner()),
-          Positioned(
-            top: AppSpacing.md,
-            left: AppSpacing.md,
-            right: AppSpacing.md,
-            child: Row(
-              children: [
-                Consumer(
-                  builder: (context, ref, _) {
-                    final status = ref.watch(wsConnectionProvider);
-                    return ConnectionBadge(
-                      status: status.value ?? ConnectionStatus.connecting,
-                    );
-                  },
-                ),
-                const Spacer(),
-                Consumer(
-                  builder: (context, ref, _) {
-                    final queueCount = ref.watch(
-                      pendingDetectionQueueProvider.select((q) => q.length),
-                    );
-                    return QueueChip(
-                      count: queueCount,
-                      onTap: _detectionSheetOpen
-                          ? null
-                          : () {
-                              final queue = ref.read(
-                                pendingDetectionQueueProvider,
-                              );
-                              if (queue.isNotEmpty) {
-                                _openDetectionSheet(queue.first);
-                              }
-                            },
-                    );
-                  },
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                _ControlMenuButton(
-                  onSelected: (item) {
-                    final route = switch (item) {
-                      _ControlMenuItem.log => const LogScreen(),
-                      _ControlMenuItem.help => const HelpScreen(),
-                      _ControlMenuItem.settings => const SettingsScreen(),
-                    };
-                    Navigator.of(
-                      context,
-                    ).push(MaterialPageRoute(builder: (_) => route));
-                  },
-                ),
-              ],
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) => Stack(
+                children: [
+                  Positioned.fill(
+                    child: FlutterMap(
+                      mapController: _mapController,
+                      options: MapOptions(
+                        initialCenter: const LatLng(
+                          37.5012,
+                          127.0262,
+                        ), // 강남↔신논현 중간
+                        initialZoom: 15,
+                        interactionOptions: const InteractionOptions(
+                          flags: InteractiveFlag.all,
+                        ),
+                        onTap: (_, point) => _openSearchAreaDetail(point),
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.drone.control_app',
+                        ),
+                        const HeatmapPainterLayer(),
+                        const DroneMarkerLayer(),
+                      ],
+                    ),
+                  ),
+                  const Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: OfflineBanner(),
+                  ),
+                  if (activeDetection != null)
+                    Positioned(
+                      top: AppSpacing.md,
+                      right: AppSpacing.md,
+                      width: 360,
+                      child: _DetectionPanelStack(
+                        maxHeight: constraints.maxHeight - AppSpacing.xl,
+                        activeDetection: activeDetection,
+                        pendingDetections: pendingDetections,
+                        locationLabels: locationLabels,
+                        gridDefinition: gridDefinition,
+                        onDetectionTap: _openDetectionPanel,
+                        onOutcome: _handleDetectionOutcome,
+                      ),
+                    ),
+                  if (activeDetection == null && selectedCellId != null)
+                    Positioned(
+                      top: AppSpacing.md,
+                      right: AppSpacing.md,
+                      width: 360,
+                      child: _FloatingMapPanel(
+                        maxHeight: constraints.maxHeight - AppSpacing.xl,
+                        child: LiveSearchAreaDetail(
+                          key: ValueKey(selectedCellId),
+                          cellId: selectedCellId,
+                          onClose: () => setState(() => _selectedCellId = null),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
-          const DroneListBar(),
         ],
       ),
     );
   }
 }
 
-/// Navy fill (vs. the white pills next to it) marks this as the one control
-/// that opens the app's official navigation — same navy the pushed screens'
-/// app bars use, borrowed from mnd.go.kr's own dark GNB toggle.
-class _ControlMenuButton extends StatelessWidget {
-  const _ControlMenuButton({required this.onSelected});
+class _DetectionPanelStack extends StatelessWidget {
+  const _DetectionPanelStack({
+    required this.maxHeight,
+    required this.activeDetection,
+    required this.pendingDetections,
+    required this.locationLabels,
+    required this.gridDefinition,
+    required this.onDetectionTap,
+    required this.onOutcome,
+  });
 
-  final ValueChanged<_ControlMenuItem> onSelected;
+  final double maxHeight;
+  final DetectionEvent activeDetection;
+  final List<DetectionEvent> pendingDetections;
+  final Map<String, String> locationLabels;
+  final Map<String, CellBounds> gridDefinition;
+  final ValueChanged<DetectionEvent> onDetectionTap;
+  final ValueChanged<DetectionOutcome> onOutcome;
 
   @override
   Widget build(BuildContext context) {
+    final previous = pendingDetections.reversed
+        .where((event) => event.detectionId != activeDetection.detectionId)
+        .take(2)
+        .toList();
+    final notificationHeight = previous.length * 60.0;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _FloatingMapPanel(
+          maxHeight: maxHeight - notificationHeight,
+          child: DetectionSheet(
+            key: ValueKey(activeDetection.detectionId),
+            event: activeDetection,
+            showCloseButton: true,
+            onOutcome: onOutcome,
+          ),
+        ),
+        for (final event in previous) ...[
+          const SizedBox(height: AppSpacing.sm),
+          _DetectionNoticeCard(
+            event: event,
+            locationLabel: locationLabelForCell(
+              cellId: event.cellId,
+              labels: locationLabels,
+              grid: gridDefinition,
+            ),
+            onTap: () => onDetectionTap(event),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _DetectionNoticeCard extends StatelessWidget {
+  const _DetectionNoticeCard({
+    required this.event,
+    required this.locationLabel,
+    required this.onTap,
+  });
+
+  final DetectionEvent event;
+  final String locationLabel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: AppColors.surface,
+    shape: RoundedRectangleBorder(
+      side: const BorderSide(color: AppColors.border),
+      borderRadius: BorderRadius.circular(2),
+    ),
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.warning_amber_rounded,
+              size: 18,
+              color: AppColors.warning,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                locationLabel,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            Text(
+              _notificationAge(event.timestamp),
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+String _notificationAge(double timestampSeconds) {
+  final timestamp = DateTime.fromMillisecondsSinceEpoch(
+    (timestampSeconds * 1000).round(),
+  );
+  final elapsed = DateTime.now().difference(timestamp);
+  if (elapsed.inMinutes < 1) return '방금 전';
+  if (elapsed.inHours < 1) return '${elapsed.inMinutes}분 전';
+  return '${elapsed.inHours}시간 전';
+}
+
+class _FloatingMapPanel extends StatelessWidget {
+  const _FloatingMapPanel({required this.maxHeight, required this.child});
+
+  final double maxHeight;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 12,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: child,
+      ),
+    );
+  }
+}
+
+class _OperationHeader extends ConsumerWidget {
+  const _OperationHeader({
+    required this.queueCount,
+    required this.onQueueTap,
+    required this.onMenuSelected,
+  });
+
+  final int queueCount;
+  final VoidCallback onQueueTap;
+  final ValueChanged<_ControlMenuItem> onMenuSelected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final connection = ref.watch(wsConnectionProvider);
+    final drones = ref.watch(dronesProvider).values.toList();
+    final drone = drones.firstOrNull;
     return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        color: AppColors.navy,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.16),
-            blurRadius: 6,
-            offset: const Offset(0, 1),
-          ),
-        ],
+      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
-      child: PopupMenuButton<_ControlMenuItem>(
-        tooltip: '메뉴',
-        padding: EdgeInsets.zero,
-        icon: const Icon(Icons.menu_outlined, color: Colors.white, size: 20),
-        offset: const Offset(0, AppSpacing.xl),
-        onSelected: onSelected,
-        itemBuilder: (context) => const [
-          PopupMenuItem(
-            value: _ControlMenuItem.log,
-            child: _MenuRow(icon: Icons.list_alt_outlined, label: '기록'),
+      child: Row(
+        children: [
+          Text(
+            '실시간 관제',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: AppColors.navy,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-          PopupMenuItem(
-            value: _ControlMenuItem.help,
-            child: _MenuRow(icon: Icons.help_outline, label: '도움말'),
+          const SizedBox(width: AppSpacing.lg),
+          ConnectionBadge(
+            status: connection.value ?? ConnectionStatus.connecting,
           ),
-          PopupMenuDivider(),
-          PopupMenuItem(
-            value: _ControlMenuItem.settings,
-            child: _MenuRow(icon: Icons.settings_outlined, label: '설정'),
+          const SizedBox(width: AppSpacing.md),
+          _DroneStatus(drone: drone),
+          const Spacer(),
+          QueueChip(count: queueCount, onTap: onQueueTap),
+          if (queueCount > 0) const SizedBox(width: AppSpacing.md),
+          _NavigationItem(
+            label: '기록',
+            onTap: () => onMenuSelected(_ControlMenuItem.log),
+          ),
+          _NavigationItem(
+            label: '도움말',
+            onTap: () => onMenuSelected(_ControlMenuItem.help),
+          ),
+          _NavigationItem(
+            label: '설정',
+            onTap: () => onMenuSelected(_ControlMenuItem.settings),
           ),
         ],
       ),
@@ -234,20 +410,51 @@ class _ControlMenuButton extends StatelessWidget {
   }
 }
 
-class _MenuRow extends StatelessWidget {
-  const _MenuRow({required this.icon, required this.label});
+class _DroneStatus extends StatelessWidget {
+  const _DroneStatus({required this.drone});
 
-  final IconData icon;
-  final String label;
+  final DroneState? drone;
 
   @override
   Widget build(BuildContext context) {
+    final activeDrone = drone;
+    if (activeDrone == null) {
+      return const Text('드론 연결 대기 중');
+    }
     return Row(
       children: [
-        Icon(icon, size: 20, color: AppColors.navy),
-        const SizedBox(width: AppSpacing.md),
-        Text(label, style: Theme.of(context).textTheme.bodyMedium),
+        Text(
+          '드론 ${activeDrone.droneId} · 배터리 ${activeDrone.battery}% · 고도 ${activeDrone.altitude.toStringAsFixed(0)}m',
+          style: Theme.of(context).textTheme.labelMedium,
+        ),
       ],
+    );
+  }
+}
+
+class _NavigationItem extends StatelessWidget {
+  const _NavigationItem({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: Center(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
