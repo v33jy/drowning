@@ -165,6 +165,23 @@ void main() {
     expect(find.text('다시 연결'), findsOneWidget);
     expect(find.textContaining('다시 시도해 주세요'), findsOneWidget);
   });
+
+  testWidgets('마이크 권한이 영구 거부되면 설정 이동을 안내한다', (tester) async {
+    await pumpSheetWithCallState(
+      tester,
+      const CallState(
+        CallStatus.disconnected,
+        sessionId: 'test-call',
+        message: '마이크 권한이 꺼져 있습니다. 기기 설정에서 권한을 허용하세요.',
+        recoveryAction: CallRecoveryAction.openMicrophoneSettings,
+      ),
+    );
+
+    expect(find.text('권한 설정'), findsOneWidget);
+    expect(find.byIcon(Icons.settings), findsOneWidget);
+    expect(find.textContaining('기기 설정에서 권한을 허용하세요'), findsOneWidget);
+    expect(find.text('다시 연결'), findsNothing);
+  });
 }
 
 class TestCallService extends CallService {

@@ -11,6 +11,8 @@ import '../config.dart';
 
 enum CallStatus { idle, connecting, active, reconnecting, disconnected }
 
+enum CallRecoveryAction { retry, openMicrophoneSettings }
+
 @immutable
 class CallState {
   const CallState(
@@ -19,6 +21,7 @@ class CallState {
     this.retryAttempt = 0,
     this.message,
     this.isTransmitting = false,
+    this.recoveryAction = CallRecoveryAction.retry,
   });
 
   final CallStatus status;
@@ -26,8 +29,16 @@ class CallState {
   final int retryAttempt;
   final String? message;
   final bool isTransmitting;
+  final CallRecoveryAction recoveryAction;
 
-  bool get canRetry => status == CallStatus.disconnected && sessionId != null;
+  bool get canRetry =>
+      status == CallStatus.disconnected &&
+      sessionId != null &&
+      recoveryAction == CallRecoveryAction.retry;
+
+  bool get requiresMicrophoneSettings =>
+      status == CallStatus.disconnected &&
+      recoveryAction == CallRecoveryAction.openMicrophoneSettings;
 }
 
 final callServiceProvider = StateNotifierProvider<CallService, CallState>(
@@ -91,10 +102,16 @@ class CallService extends StateNotifier<CallState> {
       if (_localStream == null) {
         final permission = await Permission.microphone.request();
         if (!permission.isGranted) {
+          final requiresSettings = permission.isPermanentlyDenied;
           state = CallState(
             CallStatus.disconnected,
             sessionId: sessionId,
-            message: '마이크 권한을 허용한 뒤 다시 시도하세요.',
+            message: requiresSettings
+                ? '마이크 권한이 꺼져 있습니다. 기기 설정에서 권한을 허용하세요.'
+                : '통화하려면 마이크 권한이 필요합니다.',
+            recoveryAction: requiresSettings
+                ? CallRecoveryAction.openMicrophoneSettings
+                : CallRecoveryAction.retry,
           );
           return;
         }
@@ -280,6 +297,8 @@ class CallService extends StateNotifier<CallState> {
       track.enabled = enabled;
     }
   }
+
+  Future<bool> openMicrophoneSettings() => openAppSettings();
 
   Future<void> _closeConnection({required bool keepLocalStream}) async {
     final subscription = _signalingSubscription;
