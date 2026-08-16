@@ -37,6 +37,9 @@ class Settings:
     serial_port: str = os.getenv("SERIAL_PORT", "/dev/ttyUSB0")
     baud_rate: int = int(os.getenv("BAUD_RATE", "115200"))
 
+    fc_serial_port: str = os.getenv("FC_SERIAL_PORT", "/dev/serial0")
+    fc_baud_rate: int = int(os.getenv("FC_BAUD_RATE", "115200"))
+
     # Reconnect delay after a serial disconnect — drone vibration can drop
     # the USB-serial link momentarily.
     serial_reconnect_delay_sec: float = float(os.getenv("SERIAL_RECONNECT_DELAY_SEC", "3"))

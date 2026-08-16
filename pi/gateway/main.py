@@ -6,6 +6,7 @@ from typing import Optional
 
 from client import GatewayClient, extract_drone_id
 from config import settings
+from flight_controller import FlightController
 from packet_parser import PacketParseError, parse_packet
 from signal_pipeline.factory import create_fpga_transport, create_sdr_source
 from signal_pipeline.pipeline import SignalPipeline
@@ -155,6 +156,38 @@ def run_raw_debug() -> None:
         print(f"[raw] {raw_data!r}")
 
 
+def run_mavlink_telemetry(client: GatewayClient) -> None:
+    """Read H743 MAVLink telemetry and forward it to the server."""
+
+    controller = FlightController(
+        port=settings.fc_serial_port,
+        baud_rate=settings.fc_baud_rate,
+    )
+
+    print(
+        f"[MAVLink mode] port={settings.fc_serial_port}, "
+        f"baud={settings.fc_baud_rate}"
+    )
+
+    for flight_data in controller.telemetry():
+        telemetry = {
+            "drone_id": "drone-01",
+            "latitude": flight_data.latitude,
+            "longitude": flight_data.longitude,
+            "altitude": (
+                flight_data.altitude
+                if flight_data.altitude is not None
+                else 0.0
+            ),
+            "battery": flight_data.battery,
+            "status": "active",
+        }
+
+        print(f"[MAVLink telemetry] {telemetry}")
+
+        client.send_telemetry(telemetry)
+
+
 def get_packet_source() -> Iterator[str]:
     """Pick mock, signal pipeline, or UART input based on settings."""
 
@@ -196,7 +229,12 @@ def check_fpga_detection() -> Optional[tuple[int, float]]:
     return None
 
 
-def _try_send_detection(client: GatewayClient, drone_id: int, cell_id: Optional[str], rss_dbm: float) -> None:
+def _try_send_detection(
+    client: GatewayClient,
+    drone_id: int,
+    cell_id: Optional[str],
+    rss_dbm: float
+) -> None:
     """Skip sending if cell_id is missing (outside the grid) — the server
     would reject it with 422 anyway, so don't waste retries on it."""
     if cell_id is None:
@@ -262,6 +300,18 @@ def main() -> None:
         dry_run=settings.dry_run
     )
 
+    if settings.input_mode.lower() == "mavlink":
+        try:
+            run_mavlink_telemetry(client)
+        except KeyboardInterrupt:
+            print("\n[stopped] interrupted by user.")
+        except Exception as error:
+            print(f"\n[fatal error] {error}")
+        finally:
+            client.close()
+            print("[stopped] gateway connections closed.")
+        return
+
     rss_detector = RssThresholdDetector(
         threshold=settings.rss_detection_threshold,
         cooldown_sec=settings.detection_cooldown_sec,
@@ -312,7 +362,12 @@ def main() -> None:
                 detected = check_fpga_detection()
                 if detected is not None:
                     fpga_drone_id, fpga_rss = detected
-                    _try_send_detection(client, fpga_drone_id, cell_id, fpga_rss)
+                    _try_send_detection(
+                        client,
+                        fpga_drone_id,
+                        cell_id,
+                        fpga_rss
+                    )
 
     except KeyboardInterrupt:
         print("\n[stopped] interrupted by user.")
@@ -325,6 +380,7 @@ def main() -> None:
             close = getattr(packet_source, "close", None)
             if close is not None:
                 close()
+
         client.close()
         print("[stopped] gateway connections closed.")
 

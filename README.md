@@ -110,3 +110,25 @@ python3 camera_stream.py --mock --drone-id 1
 ## 참고
 - 서버는 DB 없이 전부 인메모리로 동작합니다. 재시작하면 상태가 초기화됩니다.
 - 현재 관제 UI는 프로젝트 범위에 맞춰 단일 드론 중심으로 구성했습니다. 서버와 앱의 상태 저장 구조는 드론 ID를 유지해 향후 다중 드론 관제로 확장할 수 있습니다.
+
+## H743 비행제어보드 연동
+
+Raspberry Pi는 H743 비행제어보드와 UART로 연결하여 MAVLink 기반의
+GPS 위치, 고도, 배터리 및 비행 상태 정보를 수신할 수 있습니다.
+
+H743 데이터를 사용할 때는 `INPUT_MODE=mavlink`로 실행합니다.
+
+```bash
+INPUT_MODE=mavlink \
+FC_SERIAL_PORT=/dev/serial0 \
+FC_BAUD_RATE=115200 \
+python3 main.py
+```
+
+현재 Baud rate는 `115200`으로 설정되어 있습니다.
+
+`FC_SERIAL_PORT=/dev/serial0`은 기본값이며, 실제 Raspberry Pi와 H743를
+연결한 후 사용되는 UART 포트를 확인하여 변경해야 합니다.
+
+자세한 H743/MAVLink 연결 방법, 수신 데이터 및 실제 하드웨어 테스트 방법은
+[`docs/h743-mavlink.md`](docs/h743-mavlink.md)를 참고하세요.
