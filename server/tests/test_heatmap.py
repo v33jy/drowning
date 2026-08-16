@@ -34,6 +34,15 @@ class GridDefinitionTests(unittest.TestCase):
         cells = grid_definition()
         self.assertEqual(len(cells), config.GRID_ROWS * config.GRID_COLS)
 
+    def test_default_landmark_is_not_applied_to_a_custom_grid(self):
+        self.assertEqual(config._load_grid_landmarks(None, False), {})
+
+    def test_explicit_landmark_is_kept_for_a_custom_grid(self):
+        self.assertEqual(
+            config._load_grid_landmarks('{"A0":"현장 지휘소"}', False),
+            {"A0": "현장 지휘소"},
+        )
+
 
 class HeatmapStateTests(unittest.TestCase):
     def setUp(self):

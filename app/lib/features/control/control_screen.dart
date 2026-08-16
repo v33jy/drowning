@@ -6,11 +6,13 @@ import 'package:latlong2/latlong.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../models/detection_event.dart';
 import '../../models/grid_cell.dart';
+import '../../services/call_service.dart';
 import '../detection/detection_sheet.dart';
 import '../detection/providers/detection_log_provider.dart';
 import '../log/log_screen.dart';
 import '../log/providers/combined_log_provider.dart';
 import '../settings/settings_screen.dart';
+import 'detection_panel_selection.dart';
 import 'providers/drones_provider.dart';
 import 'providers/grid_provider.dart';
 import 'providers/map_focus_provider.dart';
@@ -44,7 +46,15 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
   }
 
   void _openDetectionPanel(DetectionEvent event) {
-    setState(() => _activeDetection = event);
+    final pendingDetections = ref.read(pendingDetectionQueueProvider);
+    final selected = pendingDetections.isEmpty
+        ? event
+        : selectDetectionForDisplay(
+            pendingDetections: pendingDetections,
+            callState: ref.read(callServiceProvider),
+            preferredDetection: event,
+          );
+    setState(() => _activeDetection = selected);
   }
 
   void _handleDetectionOutcome(DetectionOutcome outcome) {
