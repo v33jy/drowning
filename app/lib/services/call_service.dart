@@ -8,8 +8,14 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../config.dart';
+import 'microphone_permission_guidance.dart';
+
+export 'microphone_permission_guidance.dart' show CallRecoveryAction;
 
 enum CallStatus { idle, connecting, active, reconnecting, disconnected }
+
+Future<PermissionStatus> _currentMicrophonePermissionStatus() =>
+    Permission.microphone.status;
 
 @immutable
 class CallState {
@@ -19,6 +25,7 @@ class CallState {
     this.retryAttempt = 0,
     this.message,
     this.isTransmitting = false,
+    this.recoveryAction = CallRecoveryAction.retry,
   });
 
   final CallStatus status;
@@ -26,8 +33,16 @@ class CallState {
   final int retryAttempt;
   final String? message;
   final bool isTransmitting;
+  final CallRecoveryAction recoveryAction;
 
-  bool get canRetry => status == CallStatus.disconnected && sessionId != null;
+  bool get canRetry =>
+      status == CallStatus.disconnected &&
+      sessionId != null &&
+      recoveryAction == CallRecoveryAction.retry;
+
+  bool get requiresMicrophoneSettings =>
+      status == CallStatus.disconnected &&
+      recoveryAction == CallRecoveryAction.openMicrophoneSettings;
 }
 
 final callServiceProvider = StateNotifierProvider<CallService, CallState>(
@@ -39,11 +54,15 @@ class CallService extends StateNotifier<CallState> {
     this.maxReconnectAttempts = 3,
     this.reconnectDelay = const Duration(seconds: 2),
     this.connectionAttemptTimeout = const Duration(seconds: 10),
-  }) : super(const CallState(CallStatus.idle));
+    Future<PermissionStatus> Function()? microphonePermissionStatus,
+  }) : _microphonePermissionStatus =
+           microphonePermissionStatus ?? _currentMicrophonePermissionStatus,
+       super(const CallState(CallStatus.idle));
 
   final int maxReconnectAttempts;
   final Duration reconnectDelay;
   final Duration connectionAttemptTimeout;
+  final Future<PermissionStatus> Function() _microphonePermissionStatus;
 
   RTCPeerConnection? _peer;
   MediaStream? _localStream;
@@ -91,10 +110,12 @@ class CallService extends StateNotifier<CallState> {
       if (_localStream == null) {
         final permission = await Permission.microphone.request();
         if (!permission.isGranted) {
+          final guidance = MicrophonePermissionGuidance.fromStatus(permission);
           state = CallState(
             CallStatus.disconnected,
             sessionId: sessionId,
-            message: '마이크 권한을 허용한 뒤 다시 시도하세요.',
+            message: guidance.message,
+            recoveryAction: guidance.recoveryAction,
           );
           return;
         }
@@ -279,6 +300,27 @@ class CallService extends StateNotifier<CallState> {
         in _localStream?.getAudioTracks() ?? <MediaStreamTrack>[]) {
       track.enabled = enabled;
     }
+  }
+
+  Future<bool> openMicrophoneSettings() => openAppSettings();
+
+  Future<bool> refreshMicrophonePermission() async {
+    if (_disposed || !state.requiresMicrophoneSettings) return false;
+    final sessionId = state.sessionId;
+    final permission = await _microphonePermissionStatus();
+    if (!permission.isGranted ||
+        _disposed ||
+        !state.requiresMicrophoneSettings ||
+        state.sessionId != sessionId) {
+      return false;
+    }
+
+    state = CallState(
+      CallStatus.disconnected,
+      sessionId: sessionId,
+      message: '마이크 권한이 확인되었습니다. 음성 통화를 다시 연결합니다.',
+    );
+    return true;
   }
 
   Future<void> _closeConnection({required bool keepLocalStream}) async {
