@@ -10,6 +10,7 @@ import '../../models/detection_event.dart';
 import '../../services/call_service.dart';
 import '../control/providers/video_frame_provider.dart';
 import 'call_controls.dart';
+import 'microphone_input_indicator.dart';
 import 'providers/detection_log_provider.dart';
 import 'push_to_talk_button.dart';
 
@@ -177,6 +178,14 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
               ),
             ),
             const SizedBox(height: AppSpacing.sm),
+            Center(
+              child: MicrophoneInputIndicator(
+                status: callState.microphoneInputStatus,
+                level: callState.microphoneLevel,
+              ),
+            ),
+            if (callState.microphoneInputStatus != MicrophoneInputStatus.idle)
+              const SizedBox(height: AppSpacing.sm),
             Center(
               child: Text(
                 callState.status == CallStatus.active

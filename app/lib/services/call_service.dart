@@ -14,6 +14,8 @@ export 'microphone_permission_guidance.dart' show CallRecoveryAction;
 
 enum CallStatus { idle, connecting, active, reconnecting, disconnected }
 
+enum MicrophoneInputStatus { idle, checking, detected, silent, unavailable }
+
 Future<PermissionStatus> _currentMicrophonePermissionStatus() =>
     Permission.microphone.status;
 
@@ -25,6 +27,8 @@ class CallState {
     this.retryAttempt = 0,
     this.message,
     this.isTransmitting = false,
+    this.microphoneInputStatus = MicrophoneInputStatus.idle,
+    this.microphoneLevel = 0,
     this.recoveryAction = CallRecoveryAction.retry,
   });
 
@@ -33,6 +37,8 @@ class CallState {
   final int retryAttempt;
   final String? message;
   final bool isTransmitting;
+  final MicrophoneInputStatus microphoneInputStatus;
+  final double microphoneLevel;
   final CallRecoveryAction recoveryAction;
 
   bool get canRetry =>
@@ -55,14 +61,21 @@ class CallService extends StateNotifier<CallState> {
     this.reconnectDelay = const Duration(seconds: 2),
     this.connectionAttemptTimeout = const Duration(seconds: 10),
     Future<PermissionStatus> Function()? microphonePermissionStatus,
+    Future<double?> Function()? microphoneLevelReader,
+    this.microphoneLevelPollInterval = const Duration(milliseconds: 250),
+    this.microphoneSilenceTimeout = const Duration(seconds: 2),
   }) : _microphonePermissionStatus =
            microphonePermissionStatus ?? _currentMicrophonePermissionStatus,
+       _microphoneLevelReader = microphoneLevelReader,
        super(const CallState(CallStatus.idle));
 
   final int maxReconnectAttempts;
   final Duration reconnectDelay;
   final Duration connectionAttemptTimeout;
+  final Duration microphoneLevelPollInterval;
+  final Duration microphoneSilenceTimeout;
   final Future<PermissionStatus> Function() _microphonePermissionStatus;
+  final Future<double?> Function()? _microphoneLevelReader;
 
   RTCPeerConnection? _peer;
   MediaStream? _localStream;
@@ -70,11 +83,14 @@ class CallService extends StateNotifier<CallState> {
   StreamSubscription<dynamic>? _signalingSubscription;
   Timer? _reconnectTimer;
   Timer? _connectionAttemptTimer;
+  Timer? _microphoneLevelTimer;
+  Timer? _microphoneSilenceTimer;
   final List<RTCIceCandidate> _pendingCandidates = [];
   bool _remoteDescriptionSet = false;
   bool _disposed = false;
   bool _ending = false;
   int _connectionGeneration = 0;
+  bool _readingMicrophoneLevel = false;
 
   Future<void> startCall(String sessionId) async {
     if (_disposed ||
@@ -194,6 +210,7 @@ class CallService extends StateNotifier<CallState> {
     String message,
   ) async {
     if (!_isCurrent(generation, sessionId)) return;
+    _stopMicrophoneLevelMonitoring();
     _setMicrophoneEnabled(false);
     final attempt = state.retryAttempt + 1;
     _connectionGeneration++;
@@ -281,17 +298,126 @@ class CallService extends StateNotifier<CallState> {
       retryAttempt: state.retryAttempt,
       message: state.message,
       isTransmitting: true,
+      microphoneInputStatus: MicrophoneInputStatus.checking,
     );
+    _startMicrophoneLevelMonitoring();
   }
 
   void stopTransmitting() {
     if (_disposed || !state.isTransmitting) return;
+    _stopMicrophoneLevelMonitoring();
     _setMicrophoneEnabled(false);
     state = CallState(
       state.status,
       sessionId: state.sessionId,
       retryAttempt: state.retryAttempt,
       message: state.message,
+    );
+  }
+
+  void _startMicrophoneLevelMonitoring() {
+    _stopMicrophoneLevelMonitoring();
+    _scheduleMicrophoneSilenceWarning();
+    _sampleMicrophoneLevel();
+    _microphoneLevelTimer = Timer.periodic(
+      microphoneLevelPollInterval,
+      (_) => _sampleMicrophoneLevel(),
+    );
+  }
+
+  void _stopMicrophoneLevelMonitoring() {
+    _microphoneLevelTimer?.cancel();
+    _microphoneLevelTimer = null;
+    _microphoneSilenceTimer?.cancel();
+    _microphoneSilenceTimer = null;
+  }
+
+  void _scheduleMicrophoneSilenceWarning() {
+    _microphoneSilenceTimer?.cancel();
+    _microphoneSilenceTimer = Timer(microphoneSilenceTimeout, () {
+      if (!_disposed && state.isTransmitting) {
+        _updateMicrophoneInput(
+          MicrophoneInputStatus.silent,
+          level: state.microphoneLevel,
+        );
+      }
+    });
+  }
+
+  Future<void> _sampleMicrophoneLevel() async {
+    if (_readingMicrophoneLevel || _disposed || !state.isTransmitting) return;
+    _readingMicrophoneLevel = true;
+    try {
+      final level = await _readMicrophoneLevel();
+      if (_disposed || !state.isTransmitting) return;
+      if (level == null) {
+        _microphoneSilenceTimer?.cancel();
+        _updateMicrophoneInput(MicrophoneInputStatus.unavailable, level: 0);
+        return;
+      }
+
+      final normalizedLevel = level.clamp(0.0, 1.0).toDouble();
+      if (state.microphoneInputStatus == MicrophoneInputStatus.unavailable) {
+        _scheduleMicrophoneSilenceWarning();
+      }
+      if (normalizedLevel >= 0.02) {
+        _scheduleMicrophoneSilenceWarning();
+        _updateMicrophoneInput(
+          MicrophoneInputStatus.detected,
+          level: normalizedLevel,
+        );
+        return;
+      }
+
+      _updateMicrophoneInput(
+        state.microphoneInputStatus == MicrophoneInputStatus.silent
+            ? MicrophoneInputStatus.silent
+            : MicrophoneInputStatus.checking,
+        level: normalizedLevel,
+      );
+    } catch (error) {
+      debugPrint('마이크 입력 상태를 확인하지 못했습니다: $error');
+      if (!_disposed && state.isTransmitting) {
+        _microphoneSilenceTimer?.cancel();
+        _updateMicrophoneInput(MicrophoneInputStatus.unavailable, level: 0);
+      }
+    } finally {
+      _readingMicrophoneLevel = false;
+    }
+  }
+
+  Future<double?> _readMicrophoneLevel() async {
+    final injectedReader = _microphoneLevelReader;
+    if (injectedReader != null) return injectedReader();
+    if (Config.demoMode) return 0.65;
+
+    final peer = _peer;
+    final tracks = _localStream?.getAudioTracks() ?? <MediaStreamTrack>[];
+    if (peer == null || tracks.isEmpty) return null;
+    final reports = await peer.getStats(tracks.first);
+    double? highestLevel;
+    for (final report in reports) {
+      final rawLevel = report.values['audioLevel'];
+      if (rawLevel is! num) continue;
+      final level = rawLevel.toDouble();
+      if (highestLevel == null || level > highestLevel) highestLevel = level;
+    }
+    return highestLevel;
+  }
+
+  void _updateMicrophoneInput(
+    MicrophoneInputStatus inputStatus, {
+    required double level,
+  }) {
+    state = CallState(
+      state.status,
+      sessionId: state.sessionId,
+      retryAttempt: state.retryAttempt,
+      message: state.message,
+      isTransmitting: state.isTransmitting,
+      microphoneInputStatus: inputStatus,
+      microphoneLevel: level,
+      recoveryAction: state.recoveryAction,
     );
   }
 
@@ -349,6 +475,7 @@ class CallService extends StateNotifier<CallState> {
   Future<void> endCall({bool notifyPeer = true}) async {
     if (_disposed || state.status == CallStatus.idle || _ending) return;
     _ending = true;
+    _stopMicrophoneLevelMonitoring();
     _setMicrophoneEnabled(false);
     _reconnectTimer?.cancel();
     _connectionGeneration++;
@@ -363,6 +490,7 @@ class CallService extends StateNotifier<CallState> {
     if (state.status != CallStatus.idle) _send({'type': 'call-end'});
     _disposed = true;
     _ending = true;
+    _stopMicrophoneLevelMonitoring();
     _connectionGeneration++;
     _reconnectTimer?.cancel();
     _closeConnection(keepLocalStream: false);
