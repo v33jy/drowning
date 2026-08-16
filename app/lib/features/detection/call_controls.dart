@@ -4,15 +4,47 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../services/call_service.dart';
 
-class CallControls extends ConsumerWidget {
+class CallControls extends ConsumerStatefulWidget {
   const CallControls({super.key, required this.sessionId});
 
   final String sessionId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CallControls> createState() => _CallControlsState();
+}
+
+class _CallControlsState extends ConsumerState<CallControls>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _resumeCallAfterPermissionChange();
+    }
+  }
+
+  Future<void> _resumeCallAfterPermissionChange() async {
+    final service = ref.read(callServiceProvider.notifier);
+    if (await service.refreshMicrophonePermission()) {
+      await service.retryCall();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final callState = ref.watch(callServiceProvider);
-    final isThisCall = callState.sessionId == sessionId;
+    final isThisCall = callState.sessionId == widget.sessionId;
     final status = isThisCall ? callState.status : CallStatus.idle;
     final requiresMicrophoneSettings =
         isThisCall && callState.requiresMicrophoneSettings;
@@ -36,7 +68,7 @@ class CallControls extends ConsumerWidget {
                 requiresMicrophoneSettings
                     ? service.openMicrophoneSettings
                     : service.retryCall,
-              CallStatus.idle => () => service.startCall(sessionId),
+              CallStatus.idle => () => service.startCall(widget.sessionId),
             },
             icon: Icon(switch (status) {
               CallStatus.active => Icons.call_end,
