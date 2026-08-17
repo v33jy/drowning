@@ -1,7 +1,11 @@
-import math
 import unittest
+from unittest.mock import MagicMock
 
-from flight_controller import FlightTelemetry, update_telemetry_from_message
+from flight_controller import (
+    FlightController,
+    FlightTelemetry,
+    update_telemetry_from_message,
+)
 
 
 class FakeMessage:
@@ -16,7 +20,7 @@ class FakeMessage:
 
 
 class FlightControllerTelemetryTests(unittest.TestCase):
-    def test_global_position_int_updates_position_and_speed(self) -> None:
+    def test_global_position_int_updates_position(self) -> None:
         telemetry = FlightTelemetry()
 
         message = FakeMessage(
@@ -24,19 +28,21 @@ class FlightControllerTelemetryTests(unittest.TestCase):
             lat=375012000,
             lon=1270324000,
             alt=50000,
-            vx=300,
-            vy=400,
-            vz=-200,
+            relative_alt=12300,
         )
 
-        update_telemetry_from_message(telemetry, message)
+        update_telemetry_from_message(
+            telemetry,
+            message,
+            received_at=123.0,
+            received_monotonic=456.0,
+        )
 
         self.assertAlmostEqual(telemetry.latitude, 37.5012)
         self.assertAlmostEqual(telemetry.longitude, 127.0324)
-        self.assertAlmostEqual(telemetry.altitude, 50.0)
-
-        self.assertAlmostEqual(telemetry.ground_speed, 5.0)
-        self.assertAlmostEqual(telemetry.vertical_speed, 2.0)
+        self.assertAlmostEqual(telemetry.altitude, 12.3)
+        self.assertEqual(telemetry.position_measured_at, 123.0)
+        self.assertEqual(telemetry.position_received_monotonic, 456.0)
 
     def test_sys_status_updates_battery(self) -> None:
         telemetry = FlightTelemetry()
@@ -64,26 +70,24 @@ class FlightControllerTelemetryTests(unittest.TestCase):
 
         self.assertEqual(telemetry.battery, 50)
 
-    def test_attitude_converts_radians_to_degrees(self) -> None:
-        telemetry = FlightTelemetry()
+    def test_publishes_snapshot_only_for_new_position(self) -> None:
+        controller = FlightController("/dev/serial0")
+        controller.messages = MagicMock(return_value=iter([
+            FakeMessage("SYS_STATUS", battery_remaining=87),
+            FakeMessage(
+                "GLOBAL_POSITION_INT",
+                lat=375012000,
+                lon=1270324000,
+                alt=50000,
+                relative_alt=12300,
+            ),
+            FakeMessage("SYS_STATUS", battery_remaining=86),
+        ]))
 
-        message = FakeMessage(
-            "ATTITUDE",
-            roll=math.radians(10),
-            pitch=math.radians(-5),
-            yaw=math.radians(90),
-        )
+        snapshots = list(controller.telemetry())
 
-        update_telemetry_from_message(telemetry, message)
-
-        self.assertAlmostEqual(telemetry.roll, 10.0)
-        self.assertAlmostEqual(telemetry.pitch, -5.0)
-        self.assertAlmostEqual(telemetry.yaw, 90.0)
-
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual(snapshots[0].battery, 87)
 
 if __name__ == "__main__":
     unittest.main()
-    '''GLOBAL_POSITION_INT가 들어오면 위도/경도/고도/속도가 우리가 원하는 단위로 바뀌는지 확인
-SYS_STATUS에서 배터리 %가 제대로 들어오는지 확인
-MAVLink에서 배터리 unknown 값으로 흔히 쓰는 -1 같은 값은 기존 값을 덮어쓰지 않는지 확인
-ATTITUDE의 rad 값을 degree로 제대로 바꾸는지 확인'''

@@ -15,8 +15,9 @@ def get_bool_env(name: str, default: bool) -> bool:
 @dataclass
 class Settings:
     gateway_id: str = os.getenv("GATEWAY_ID", "gateway-01")
+    drone_id: str = os.getenv("DRONE_ID", "drone-01")
 
-    # mock: fake data / signal_pipeline: SDR→FPGA / serial: UART / raw_debug: print
+    # mock: all fake / signal_pipeline: H743 MAVLink + SDR -> FPGA
     input_mode: str = os.getenv("INPUT_MODE", "mock")
 
     sdr_mode: str = os.getenv("SDR_MODE", "mock")
@@ -34,15 +35,14 @@ class Settings:
     )
     spi_mode: int = int(os.getenv("SPI_MODE", "0"))
 
-    serial_port: str = os.getenv("SERIAL_PORT", "/dev/ttyUSB0")
-    baud_rate: int = int(os.getenv("BAUD_RATE", "115200"))
-
     fc_serial_port: str = os.getenv("FC_SERIAL_PORT", "/dev/serial0")
     fc_baud_rate: int = int(os.getenv("FC_BAUD_RATE", "115200"))
-
-    # Reconnect delay after a serial disconnect — drone vibration can drop
-    # the USB-serial link momentarily.
-    serial_reconnect_delay_sec: float = float(os.getenv("SERIAL_RECONNECT_DELAY_SEC", "3"))
+    fc_reconnect_delay_sec: float = float(
+        os.getenv("FC_RECONNECT_DELAY_SEC", "3")
+    )
+    fc_position_max_age_sec: float = float(
+        os.getenv("FC_POSITION_MAX_AGE_SEC", "3")
+    )
 
     # Server base URL, no path suffix — client.py appends /drones/*, /detection etc.
     server_url: str = os.getenv("SERVER_URL", "http://127.0.0.1:8001")

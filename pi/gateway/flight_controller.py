@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import math
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Iterator, Optional
@@ -14,18 +14,15 @@ class FlightTelemetry:
     longitude: Optional[float] = None
     altitude: Optional[float] = None
     battery: Optional[int] = None
-
-    ground_speed: Optional[float] = None
-    vertical_speed: Optional[float] = None
-
-    roll: Optional[float] = None
-    pitch: Optional[float] = None
-    yaw: Optional[float] = None
+    position_measured_at: Optional[float] = None
+    position_received_monotonic: Optional[float] = None
 
 
 def update_telemetry_from_message(
     telemetry: FlightTelemetry,
     message: Any,
+    received_at: Optional[float] = None,
+    received_monotonic: Optional[float] = None,
 ) -> FlightTelemetry:
     """Update the latest telemetry using one MAVLink message."""
 
@@ -35,19 +32,17 @@ def update_telemetry_from_message(
         telemetry.latitude = message.lat / 1e7
         telemetry.longitude = message.lon / 1e7
 
-        # GLOBAL_POSITION_INT.alt is millimetres above mean sea level.
-        telemetry.altitude = message.alt / 1000.0
-
-        # vx, vy, vz are centimetres per second in NED coordinates.
-        vx = message.vx / 100.0
-        vy = message.vy / 100.0
-
-        telemetry.ground_speed = math.hypot(vx, vy)
-
-        # MAVLink NED:
-        # positive Z velocity means downward.
-        # Convert to positive-up vertical speed for our application.
-        telemetry.vertical_speed = -(message.vz / 100.0)
+        # The server expects non-negative flight altitude, so use height above
+        # the takeoff/home position rather than mean-sea-level altitude.
+        telemetry.altitude = max(0.0, message.relative_alt / 1000.0)
+        telemetry.position_measured_at = (
+            received_at if received_at is not None else time.time()
+        )
+        telemetry.position_received_monotonic = (
+            received_monotonic
+            if received_monotonic is not None
+            else time.monotonic()
+        )
 
     elif message_type == "SYS_STATUS":
         battery_remaining = int(message.battery_remaining)
@@ -57,22 +52,18 @@ def update_telemetry_from_message(
         if 0 <= battery_remaining <= 100:
             telemetry.battery = battery_remaining
 
-    elif message_type == "ATTITUDE":
-        # MAVLink ATTITUDE angles are radians.
-        telemetry.roll = math.degrees(message.roll)
-        telemetry.pitch = math.degrees(message.pitch)
-        telemetry.yaw = math.degrees(message.yaw)
-
     return telemetry
 
 
 class FlightController:
     """Read MAVLink telemetry from the H743 flight controller."""
 
+    POSITION_INTERVAL_US = 500_000
+    SYSTEM_INTERVAL_US = 1_000_000
+
     MESSAGE_TYPES = (
         "GLOBAL_POSITION_INT",
         "SYS_STATUS",
-        "ATTITUDE",
     )
 
     def __init__(
@@ -104,11 +95,7 @@ class FlightController:
 
         self._mavutil = mavutil
 
-        print(
-            "[flight controller connecting] "
-            f"port={self.port}, "
-            f"baud={self.baud_rate}"
-        )
+        print(f"[MAVLink] connecting port={self.port} baud={self.baud_rate}")
 
         self._connection = mavutil.mavlink_connection(
             self.port,
@@ -128,8 +115,7 @@ class FlightController:
             )
 
         print(
-            "[flight controller connected] "
-            f"system={self._connection.target_system}, "
+            f"[MAVLink] connected system={self._connection.target_system} "
             f"component={self._connection.target_component}"
         )
 
@@ -165,35 +151,32 @@ class FlightController:
         if self._mavutil is None:
             return
 
-        # 5 Hz position updates.
+        # 2 Hz is enough for the gateway's default 2-second RSS cycle while
+        # keeping the last position comfortably inside the freshness window.
         self._request_message_interval(
             self._mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
-            200_000,
+            self.POSITION_INTERVAL_US,
         )
 
         # 1 Hz system/battery updates.
         self._request_message_interval(
             self._mavutil.mavlink.MAVLINK_MSG_ID_SYS_STATUS,
-            1_000_000,
-        )
-
-        # 5 Hz attitude updates.
-        self._request_message_interval(
-            self._mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE,
-            200_000,
+            self.SYSTEM_INTERVAL_US,
         )
 
         print(
-            "[flight controller] requested MAVLink streams: "
-            "GLOBAL_POSITION_INT=5Hz, "
-            "SYS_STATUS=1Hz, "
-            "ATTITUDE=5Hz"
+            "[MAVLink] requested streams: "
+            "GLOBAL_POSITION_INT=2Hz, "
+            "SYS_STATUS=1Hz"
         )
 
-    def messages(self) -> Iterator[Any]:
+    def messages(
+        self,
+        stop_event: Optional[threading.Event] = None,
+    ) -> Iterator[Any]:
         """Yield relevant MAVLink messages, reconnecting if the link fails."""
 
-        while True:
+        while stop_event is None or not stop_event.is_set():
             if self._connection is None:
                 try:
                     self.connect()
@@ -202,15 +185,17 @@ class FlightController:
                     raise
 
                 except Exception as error:
+                    print(f"[MAVLink] connection error: {error}")
                     print(
-                        f"[flight controller connection error] {error}"
-                    )
-                    print(
-                        "[flight controller] "
-                        f"retrying in {self.reconnect_delay_sec}s"
+                        f"[MAVLink] retrying in "
+                        f"{self.reconnect_delay_sec}s"
                     )
 
-                    time.sleep(self.reconnect_delay_sec)
+                    if stop_event is not None:
+                        if stop_event.wait(self.reconnect_delay_sec):
+                            break
+                    else:
+                        time.sleep(self.reconnect_delay_sec)
                     continue
 
             try:
@@ -232,32 +217,42 @@ class FlightController:
                 raise
 
             except Exception as error:
-                print(
-                    f"[flight controller disconnected] {error}"
-                )
+                print(f"[MAVLink] disconnected: {error}")
 
                 self.close()
 
                 print(
-                    "[flight controller] "
-                    f"retrying in {self.reconnect_delay_sec}s"
+                    f"[MAVLink] retrying in {self.reconnect_delay_sec}s"
                 )
 
-                time.sleep(self.reconnect_delay_sec)
+                if stop_event is not None:
+                    if stop_event.wait(self.reconnect_delay_sec):
+                        break
+                else:
+                    time.sleep(self.reconnect_delay_sec)
 
-    def telemetry(self) -> Iterator[FlightTelemetry]:
+    def telemetry(
+        self,
+        stop_event: Optional[threading.Event] = None,
+    ) -> Iterator[FlightTelemetry]:
         """Yield accumulated flight telemetry once required fields exist."""
 
         latest = FlightTelemetry()
 
-        for message in self.messages():
+        for message in self.messages(stop_event):
+            message_type = message.get_type()
             update_telemetry_from_message(
                 latest,
                 message,
             )
 
+            # Battery messages update the accumulator. Publish a new snapshot
+            # only for a new position so unchanged coordinates are not copied
+            # and locked unnecessarily.
             if (
-                latest.latitude is not None
+                message_type == "GLOBAL_POSITION_INT"
+                and latest.position_measured_at is not None
+                and latest.latitude is not None
                 and latest.longitude is not None
                 and latest.battery is not None
             ):
@@ -266,11 +261,10 @@ class FlightController:
                     longitude=latest.longitude,
                     altitude=latest.altitude,
                     battery=latest.battery,
-                    ground_speed=latest.ground_speed,
-                    vertical_speed=latest.vertical_speed,
-                    roll=latest.roll,
-                    pitch=latest.pitch,
-                    yaw=latest.yaw,
+                    position_measured_at=latest.position_measured_at,
+                    position_received_monotonic=(
+                        latest.position_received_monotonic
+                    ),
                 )
 
     def close(self) -> None:
@@ -290,4 +284,4 @@ class FlightController:
 
         self._connection = None
 
-        print("[flight controller connection closed]")
+        print("[MAVLink] connection closed")
