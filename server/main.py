@@ -15,7 +15,7 @@ init          — full state snapshot sent immediately on connection
 drone_update  — single drone's telemetry changed
 heatmap_update — full heatmap after any RSS reading
 detection     — survivor detected; includes detection_id identifying the entry
-video_frame   — camera frame relayed from the drone's video WebSocket stream (no history kept)
+video_frame   — live camera frame; sampled history is kept around RSS recheck events
 """
 
 from __future__ import annotations

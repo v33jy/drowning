@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -24,24 +25,36 @@ class VideoThumbnail extends StatelessWidget {
     // any width narrower than ~2.5x the height. Height stays the caller's
     // fixed budget (unchanged) so this can't blow the detection sheet's
     // maxHeightFraction the way a width-driven AspectRatio previously did.
-    return SizedBox(
-      height: height,
-      child: Center(
-        child: AspectRatio(
-          aspectRatio: 16 / 9,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(AppRadius.sm),
-            child: Container(
-              color: AppColors.surfaceSunken,
-              child: frameB64 == null
-                  ? const Center(
-                      child: Icon(Icons.videocam_off_outlined, size: 28, color: AppColors.textSecondary),
-                    )
-                  : Image.memory(base64Decode(frameB64!), fit: BoxFit.contain, gaplessPlayback: true),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final displayHeight = math.min(height, constraints.maxWidth * 9 / 16);
+        return Align(
+          alignment: Alignment.topCenter,
+          child: SizedBox(
+            width: displayHeight * 16 / 9,
+            height: displayHeight,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              child: Container(
+                color: AppColors.surfaceSunken,
+                child: frameB64 == null
+                    ? const Center(
+                        child: Icon(
+                          Icons.videocam_off_outlined,
+                          size: 28,
+                          color: AppColors.textSecondary,
+                        ),
+                      )
+                    : Image.memory(
+                        base64Decode(frameB64!),
+                        fit: BoxFit.contain,
+                        gaplessPlayback: true,
+                      ),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

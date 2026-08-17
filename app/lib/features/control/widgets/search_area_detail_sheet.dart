@@ -3,22 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../models/heatmap_cell.dart';
 import '../providers/heatmap_provider.dart';
+import '../providers/grid_provider.dart';
 import 'search_area_guidance.dart';
+import 'search_panel_components.dart';
+import 'video_review_section.dart';
 
-Future<void> showSearchAreaDetailSheet(BuildContext context, String cellId) =>
-    AppBottomSheet.show<void>(
-      context: context,
-      maxHeightFraction: 0.62,
-      builder: (_) => _LiveSearchAreaDetail(cellId: cellId),
-    );
-
-class _LiveSearchAreaDetail extends ConsumerWidget {
-  const _LiveSearchAreaDetail({required this.cellId});
+class LiveSearchAreaDetail extends ConsumerWidget {
+  const LiveSearchAreaDetail({
+    required this.cellId,
+    required this.onClose,
+    super.key,
+  });
 
   final String cellId;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -27,14 +27,33 @@ class _LiveSearchAreaDetail extends ConsumerWidget {
         (cells) => cells[cellId] ?? HeatmapCell.unscanned(cellId),
       ),
     );
-    return SearchAreaDetailSheet(cell: cell);
+    final locationLabel = locationLabelForCell(
+      cellId: cellId,
+      labels: ref.watch(gridLocationLabelProvider),
+      grid: ref.watch(gridDefProvider),
+    );
+    return SearchAreaDetailSheet(
+      cell: cell,
+      locationLabel: locationLabel,
+      onClose: onClose,
+      videoReview: VideoReviewSection(cellId: cellId),
+    );
   }
 }
 
 class SearchAreaDetailSheet extends StatelessWidget {
-  const SearchAreaDetailSheet({required this.cell, super.key});
+  const SearchAreaDetailSheet({
+    required this.cell,
+    this.locationLabel = '위치 정보 없음',
+    this.onClose,
+    this.videoReview,
+    super.key,
+  });
 
   final HeatmapCell cell;
+  final String locationLabel;
+  final VoidCallback? onClose;
+  final Widget? videoReview;
 
   @override
   Widget build(BuildContext context) {
@@ -45,97 +64,29 @@ class SearchAreaDetailSheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '수색 구역 ${cell.cellId}',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              _AreaStatusBadge(guidance: guidance),
-            ],
+          SearchStatusHeader(
+            status: guidance.statusLabel,
+            statusColor: guidance.color,
+            locationLabel: locationLabel,
+            trailing: onClose == null
+                ? null
+                : IconButton(
+                    tooltip: '닫기',
+                    onPressed: onClose,
+                    icon: const Icon(Icons.close, size: 20),
+                  ),
           ),
+          SearchActionSummary(action: guidance.action, reason: guidance.reason),
           const SizedBox(height: AppSpacing.lg),
-          _GuidancePanel(guidance: guidance),
-          const SizedBox(height: AppSpacing.lg),
-          Text('확인 정보', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: AppSpacing.sm),
           _InfoRow(label: '최근 확인', value: formatLastChecked(cell.lastUpdated)),
-          _InfoRow(label: '측정 횟수', value: '${cell.sampleCount}회'),
-          _InfoRow(label: '확인 드론', value: '${cell.droneCount}대'),
-          if (cell.needsRecheck)
-            _InfoRow(label: '반복 확인', value: '${cell.strongSignalCount}회'),
+          const SizedBox(height: AppSpacing.lg),
+          Text('확인 영상', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: AppSpacing.sm),
-          Text(
-            '이 정보는 수색 판단을 지원하며 구조 대상자의 위치를 확정하지 않습니다.',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
-          ),
+          videoReview ?? const Text('이 구역에 보존된 영상이 없습니다.'),
         ],
       ),
     );
   }
-}
-
-class _AreaStatusBadge extends StatelessWidget {
-  const _AreaStatusBadge({required this.guidance});
-
-  final SearchAreaGuidance guidance;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(
-      horizontal: AppSpacing.md,
-      vertical: AppSpacing.sm,
-    ),
-    decoration: BoxDecoration(
-      color: guidance.color.withValues(alpha: 0.12),
-      borderRadius: BorderRadius.circular(AppRadius.lg),
-    ),
-    child: Text(
-      guidance.statusLabel,
-      style: TextStyle(color: guidance.color, fontWeight: FontWeight.w700),
-    ),
-  );
-}
-
-class _GuidancePanel extends StatelessWidget {
-  const _GuidancePanel({required this.guidance});
-
-  final SearchAreaGuidance guidance;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(AppSpacing.lg),
-    decoration: BoxDecoration(
-      color: guidance.color.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(AppRadius.lg),
-      border: Border.all(color: guidance.color.withValues(alpha: 0.25)),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(guidance.icon, color: guidance.color),
-        const SizedBox(width: AppSpacing.md),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(guidance.reason),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                '권장 조치: ${guidance.action}',
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
 }
 
 class _InfoRow extends StatelessWidget {
@@ -148,13 +99,10 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
     child: Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(color: AppColors.textSecondary),
-          ),
-        ),
+        Text(label, style: const TextStyle(color: AppColors.textSecondary)),
+        const SizedBox(width: AppSpacing.sm),
         Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
       ],
     ),

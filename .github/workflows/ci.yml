@@ -33,3 +33,33 @@ jobs:
       - name: Run ground_station tests
         run: python -m unittest discover -s tests -v
         working-directory: ground_station
+
+  flutter-checks:
+    name: Flutter checks (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [app, survivor_app]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: ${{ matrix.project }}
+
+      - name: Run static analysis
+        run: flutter analyze
+        working-directory: ${{ matrix.project }}
+
+      - name: Run tests
+        run: flutter test
+        working-directory: ${{ matrix.project }}

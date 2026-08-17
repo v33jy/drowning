@@ -45,6 +45,8 @@ class _BootScreenState extends ConsumerState<BootScreen> {
       // data both come from DemoFeed instead (see Config.demoMode).
       if (Config.demoMode) {
         ref.read(gridDefProvider.notifier).state = DemoFeed.gridDef();
+        ref.read(gridLocationLabelProvider.notifier).state =
+            DemoFeed.locationLabels;
         await ref.read(wsClientProvider).connect(Config.wsUrl);
         if (!mounted) return;
         setState(() => _phase = _BootPhase.success);
@@ -111,8 +113,11 @@ class _SplashBody extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.satellite_alt_outlined,
-                  size: 48, color: AppColors.primary),
+              const Icon(
+                Icons.satellite_alt_outlined,
+                size: 48,
+                color: AppColors.primary,
+              ),
               const SizedBox(height: AppSpacing.md),
               Text(
                 'Mission Control',
