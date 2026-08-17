@@ -47,10 +47,13 @@ def update_telemetry_from_message(
     elif message_type == "SYS_STATUS":
         battery_remaining = int(message.battery_remaining)
 
-        # MAVLink may use invalid/unknown values.
-        # Only store a real percentage.
-        if 0 <= battery_remaining <= 100:
-            telemetry.battery = battery_remaining
+        # MAVLink uses -1 when the battery monitor is unavailable. Keep that
+        # state explicit instead of retaining a stale percentage.
+        telemetry.battery = (
+            battery_remaining
+            if 0 <= battery_remaining <= 100
+            else None
+        )
 
     return telemetry
 
@@ -254,7 +257,6 @@ class FlightController:
                 and latest.position_measured_at is not None
                 and latest.latitude is not None
                 and latest.longitude is not None
-                and latest.battery is not None
             ):
                 yield FlightTelemetry(
                     latitude=latest.latitude,

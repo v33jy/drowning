@@ -73,7 +73,7 @@ class _DroneStatus extends StatelessWidget {
     final activeDrone = drone;
     if (activeDrone == null) return const Text('드론 연결 대기 중');
     return Text(
-      '드론 ${activeDrone.droneId} · 배터리 ${activeDrone.battery}% · '
+      '드론 ${activeDrone.droneId} · 배터리 ${activeDrone.batteryLabel} · '
       '고도 ${activeDrone.altitude.toStringAsFixed(0)}m',
       style: Theme.of(context).textTheme.labelMedium,
     );

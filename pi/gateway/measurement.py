@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ class SignalObservation:
     latitude: float
     longitude: float
     altitude: float
-    battery: int
+    battery: Optional[int]
     signal_measured_at: float
     position_measured_at: float
 
@@ -40,7 +40,7 @@ class SignalObservation:
             raise ValueError("longitude must be between -180 and 180")
         if self.altitude < 0:
             raise ValueError("altitude must be zero or greater")
-        if not 0 <= self.battery <= 100:
+        if self.battery is not None and not 0 <= self.battery <= 100:
             raise ValueError("battery must be between 0 and 100")
         if self.signal_measured_at < 0 or self.position_measured_at < 0:
             raise ValueError("measurement times must be zero or greater")

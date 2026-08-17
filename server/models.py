@@ -7,7 +7,7 @@ class DroneTelemetry(BaseModel):
     lat: float
     lng: float
     altitude: float = Field(ge=0)
-    battery: int = Field(ge=0, le=100)
+    battery: Optional[int] = Field(default=None, ge=0, le=100)
     status: str = "active"  # active | returning | lost
 
 

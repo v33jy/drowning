@@ -16,7 +16,8 @@ class DroneAlertNotifier extends Notifier<List<LogEntry>> {
     ref.listen(dronesProvider, (previous, next) {
       for (final drone in next.values) {
         final wasLow = _lowBatteryFlags[drone.droneId] ?? false;
-        final isLow = drone.battery <= 20;
+        final battery = drone.battery;
+        final isLow = battery != null && battery <= 20;
         if (isLow && !wasLow) {
           state = [
             ...state,
@@ -24,7 +25,7 @@ class DroneAlertNotifier extends Notifier<List<LogEntry>> {
               type: LogEntryType.batteryLow,
               droneId: drone.droneId,
               timestamp: DateTime.now(),
-              title: '배터리 부족 — 드론 #${drone.droneId} (${drone.battery}%)',
+              title: '배터리 부족 — 드론 #${drone.droneId} ($battery%)',
               severity: Severity.warning,
             ),
           ];
@@ -58,5 +59,6 @@ class DroneAlertNotifier extends Notifier<List<LogEntry>> {
   }
 }
 
-final droneAlertProvider =
-    NotifierProvider<DroneAlertNotifier, List<LogEntry>>(DroneAlertNotifier.new);
+final droneAlertProvider = NotifierProvider<DroneAlertNotifier, List<LogEntry>>(
+  DroneAlertNotifier.new,
+);

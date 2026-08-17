@@ -18,7 +18,6 @@ def combine_measurements(
     if (
         flight_data.latitude is None
         or flight_data.longitude is None
-        or flight_data.battery is None
         or flight_data.position_measured_at is None
     ):
         raise ValueError("Flight telemetry is incomplete")

@@ -131,7 +131,7 @@ class _SingleDronePanel extends ConsumerWidget {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       Text(
-                        '배터리 ${drone.battery}% · 고도 ${drone.altitude.toStringAsFixed(0)}m',
+                        '배터리 ${drone.batteryLabel} · 고도 ${drone.altitude.toStringAsFixed(0)}m',
                         style: Theme.of(context).textTheme.labelSmall,
                       ),
                     ],
@@ -194,7 +194,7 @@ class _DroneMetrics extends StatelessWidget {
       ),
       TableRow(
         children: [
-          _cell('${drone.battery}%'),
+          _cell(drone.batteryLabel),
           _cell('${drone.altitude.toStringAsFixed(0)} m'),
           _cell(rssDbm == null ? '—' : '${rssDbm!.toStringAsFixed(1)} dBm'),
           _cell(drone.cellId ?? '—'),

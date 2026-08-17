@@ -60,6 +60,21 @@ class CombineMeasurementsTests(unittest.TestCase):
                 "drone-01",
             )
 
+    def test_combines_position_when_battery_is_unknown(self) -> None:
+        combined = mavlink_telemetry.combine_measurements(
+            SignalMeasurement(rss_dbm=-65.0, measured_at=124.0),
+            FlightTelemetry(
+                latitude=37.5012,
+                longitude=127.0324,
+                altitude=50.0,
+                battery=None,
+                position_measured_at=123.0,
+            ),
+            "drone-01",
+        )
+
+        self.assertIsNone(combined.battery)
+
 
 class MavlinkTelemetryServiceTests(unittest.TestCase):
     def test_builds_controller_from_hardware_settings(self) -> None:
