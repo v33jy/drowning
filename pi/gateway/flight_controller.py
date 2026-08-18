@@ -47,8 +47,8 @@ def update_telemetry_from_message(
     elif message_type == "SYS_STATUS":
         battery_remaining = int(message.battery_remaining)
 
-        # MAVLink uses -1 when the battery monitor is unavailable. Keep that
-        # state explicit instead of retaining a stale percentage.
+        # MAVLink uses -1 when the battery monitor is unavailable.
+        # Store None instead of retaining a stale battery percentage.
         telemetry.battery = (
             battery_remaining
             if 0 <= battery_remaining <= 100
@@ -74,11 +74,13 @@ class FlightController:
         port: str,
         baud_rate: int = 115200,
         heartbeat_timeout_sec: float = 10.0,
+        message_timeout_sec: float = 10.0,
         reconnect_delay_sec: float = 3.0,
     ) -> None:
         self.port = port
         self.baud_rate = baud_rate
         self.heartbeat_timeout_sec = heartbeat_timeout_sec
+        self.message_timeout_sec = message_timeout_sec
         self.reconnect_delay_sec = reconnect_delay_sec
 
         self._connection = None
@@ -89,7 +91,6 @@ class FlightController:
 
         try:
             from pymavlink import mavutil
-
         except ImportError as error:
             raise RuntimeError(
                 "pymavlink is not installed. "
@@ -98,7 +99,10 @@ class FlightController:
 
         self._mavutil = mavutil
 
-        print(f"[MAVLink] connecting port={self.port} baud={self.baud_rate}")
+        print(
+            f"[MAVLink] connecting port={self.port} "
+            f"baud={self.baud_rate}"
+        )
 
         self._connection = mavutil.mavlink_connection(
             self.port,
@@ -154,14 +158,13 @@ class FlightController:
         if self._mavutil is None:
             return
 
-        # 2 Hz is enough for the gateway's default 2-second RSS cycle while
-        # keeping the last position comfortably inside the freshness window.
+        # Request position updates at 2 Hz.
         self._request_message_interval(
             self._mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
             self.POSITION_INTERVAL_US,
         )
 
-        # 1 Hz system/battery updates.
+        # Request system and battery updates at 1 Hz.
         self._request_message_interval(
             self._mavutil.mavlink.MAVLINK_MSG_ID_SYS_STATUS,
             self.SYSTEM_INTERVAL_US,
@@ -177,12 +180,15 @@ class FlightController:
         self,
         stop_event: Optional[threading.Event] = None,
     ) -> Iterator[Any]:
-        """Yield relevant MAVLink messages, reconnecting if the link fails."""
+        """Yield MAVLink messages and reconnect when telemetry becomes silent."""
+
+        last_message_received_monotonic = time.monotonic()
 
         while stop_event is None or not stop_event.is_set():
             if self._connection is None:
                 try:
                     self.connect()
+                    last_message_received_monotonic = time.monotonic()
 
                 except KeyboardInterrupt:
                     raise
@@ -190,7 +196,7 @@ class FlightController:
                 except Exception as error:
                     print(f"[MAVLink] connection error: {error}")
                     print(
-                        f"[MAVLink] retrying in "
+                        "[MAVLink] retrying in "
                         f"{self.reconnect_delay_sec}s"
                     )
 
@@ -199,6 +205,7 @@ class FlightController:
                             break
                     else:
                         time.sleep(self.reconnect_delay_sec)
+
                     continue
 
             try:
@@ -209,11 +216,24 @@ class FlightController:
                 )
 
                 if message is None:
+                    silence_sec = (
+                        time.monotonic()
+                        - last_message_received_monotonic
+                    )
+
+                    if silence_sec >= self.message_timeout_sec:
+                        print(
+                            "[MAVLink] no telemetry received for "
+                            f"{silence_sec:.1f}s; reconnecting"
+                        )
+                        self.close()
+
                     continue
 
                 if message.get_type() == "BAD_DATA":
                     continue
 
+                last_message_received_monotonic = time.monotonic()
                 yield message
 
             except KeyboardInterrupt:
@@ -225,7 +245,8 @@ class FlightController:
                 self.close()
 
                 print(
-                    f"[MAVLink] retrying in {self.reconnect_delay_sec}s"
+                    "[MAVLink] retrying in "
+                    f"{self.reconnect_delay_sec}s"
                 )
 
                 if stop_event is not None:
@@ -244,14 +265,14 @@ class FlightController:
 
         for message in self.messages(stop_event):
             message_type = message.get_type()
+
             update_telemetry_from_message(
                 latest,
                 message,
             )
 
-            # Battery messages update the accumulator. Publish a new snapshot
-            # only for a new position so unchanged coordinates are not copied
-            # and locked unnecessarily.
+            # Battery messages update the accumulator. Publish a snapshot only
+            # when a new position arrives.
             if (
                 message_type == "GLOBAL_POSITION_INT"
                 and latest.position_measured_at is not None

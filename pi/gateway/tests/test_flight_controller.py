@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from flight_controller import (
     FlightController,
@@ -106,6 +106,33 @@ class FlightControllerTelemetryTests(unittest.TestCase):
 
         self.assertEqual(len(snapshots), 1)
         self.assertIsNone(snapshots[0].battery)
+
+    @patch(
+        "flight_controller.time.monotonic",
+        side_effect=[100.0, 111.0],
+    )
+    def test_closes_silent_connection_after_timeout(
+        self,
+        _mock_monotonic,
+    ) -> None:
+        controller = FlightController(
+            "/dev/serial0",
+            message_timeout_sec=10.0,
+        )
+
+        connection = MagicMock()
+        connection.recv_match.return_value = None
+        controller._connection = connection
+
+        stop_event = MagicMock()
+        stop_event.is_set.side_effect = [False, True]
+
+        messages = list(controller.messages(stop_event))
+
+        self.assertEqual(messages, [])
+        connection.close.assert_called_once()
+        self.assertIsNone(controller._connection)
+
 
 if __name__ == "__main__":
     unittest.main()
