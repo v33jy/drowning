@@ -1,6 +1,6 @@
 # Raspberry Pi Drone Gateway
 
-드론 또는 UART 장치에서 데이터를 수신하고, FastAPI 서버(`/drones/{id}/telemetry`,
+H743와 SDR/FPGA에서 데이터를 수신하고, FastAPI 서버(`/drones/{id}/telemetry`,
 `/drones/{id}/signal`, `/detection`)로 전달하는 프로그램입니다.
 
 ## 주요 기능
@@ -8,19 +8,12 @@
 - Mock 테스트 데이터 생성 — 강남역→신논현역 접근 시나리오를 재현해서 하드웨어 없이도
   `DETECTION_MODE=rss_threshold` 탐지 트리거까지 확인 가능
 - RTL-SDR IQ 수신 및 FPGA SPI 전송 파이프라인
+- H743 MAVLink GPS·고도·배터리를 SDR/FPGA RSS 측정과 결합
 - SDR과 FPGA를 각각 mock 또는 실제 장치로 선택 가능
-- UART 데이터 수신 및 파싱, 연결이 끊기면(케이블 접촉 불량 등) 죽지 않고 자동 재연결
+- MAVLink 연결이 끊기면 자동 재연결
 - 텔레메트리·신호세기 서버 전송, 실패 시 자동 재시도
 - 탐지(survivor detection) 이벤트 전송 — FPGA 인터럽트 또는 RSS 임계값, 둘 중 선택 가능
   (그리드 범위 밖이라 cell_id가 없으면 재시도 낭비 없이 보류)
-- 원본 패킷 확인용 디버그 모드
-
-## 패킷 형식 (잠정 — 실기기 연결 후 검증 필요)
-
-```text
-drone_id,rssi,latitude,longitude,battery
-drone-01,-65,37.5012,127.0324,87
-```
 
 ## 실행
 
@@ -30,21 +23,16 @@ pip install -r requirements.txt
 # 하드웨어 없이 mock 데이터로 테스트
 INPUT_MODE=mock SERVER_URL=http://127.0.0.1:8001 python3 main.py
 
-# 신호처리 파이프라인 전체 mock
-INPUT_MODE=signal_pipeline SDR_MODE=mock FPGA_MODE=mock \
-  DETECTION_MODE=rss_threshold python3 main.py
-
-# 실제 RTL-SDR과 FPGA SPI 사용
+# 실제 H743, RTL-SDR과 FPGA SPI 사용
 pip install -r requirements-hardware.txt
 INPUT_MODE=signal_pipeline SDR_MODE=real FPGA_MODE=real \
+  FC_SERIAL_PORT=/dev/serial0 FC_BAUD_RATE=115200 \
   DETECTION_MODE=rss_threshold python3 main.py
 
-# 실제 UART 장치 연결
-INPUT_MODE=serial SERIAL_PORT=/dev/ttyUSB0 BAUD_RATE=115200 \
-  SERVER_URL=http://127.0.0.1:8001 python3 main.py
-
-# 실기기 패킷 포맷 확인용 (파싱/전송 없이 원본만 출력)
-INPUT_MODE=raw_debug SERIAL_PORT=/dev/ttyUSB0 python3 main.py
+# H743는 실제로 연결하고 SDR/FPGA만 mock으로 검증
+INPUT_MODE=signal_pipeline SDR_MODE=mock FPGA_MODE=mock \
+  FC_SERIAL_PORT=/dev/serial0 FC_BAUD_RATE=115200 \
+  DETECTION_MODE=rss_threshold python3 main.py
 ```
 
 ## 환경변수
@@ -52,7 +40,8 @@ INPUT_MODE=raw_debug SERIAL_PORT=/dev/ttyUSB0 python3 main.py
 | 변수 | 기본값 | 설명 |
 |---|---|---|
 | `GATEWAY_ID` | `gateway-01` | 게이트웨이 식별 이름 |
-| `INPUT_MODE` | `mock` | `mock` / `signal_pipeline` / `serial` / `raw_debug` |
+| `DRONE_ID` | `drone-01` | 서버에 전송할 드론 식별자 |
+| `INPUT_MODE` | `mock` | `mock` / `signal_pipeline` |
 | `SDR_MODE` | `mock` | `mock` / `real` |
 | `SDR_SAMPLE_RATE_HZ` | `2400000` | RTL-SDR sample rate(Hz) |
 | `SDR_CENTER_FREQUENCY_HZ` | `915000000` | RTL-SDR 중심 주파수(Hz) |
@@ -62,8 +51,10 @@ INPUT_MODE=raw_debug SERIAL_PORT=/dev/ttyUSB0 python3 main.py
 | `SPI_DEVICE` | `0` | FPGA SPI device 번호 |
 | `SPI_MAX_SPEED_HZ` | `1000000` | FPGA SPI 최대 속도(Hz) |
 | `SPI_MODE` | `0` | FPGA SPI mode |
-| `SERIAL_PORT` | `/dev/ttyUSB0` | UART 포트 |
-| `BAUD_RATE` | `115200` | UART 속도 |
+| `FC_SERIAL_PORT` | `/dev/serial0` | H743 MAVLink UART 포트 |
+| `FC_BAUD_RATE` | `115200` | H743 MAVLink UART 속도 |
+| `FC_RECONNECT_DELAY_SEC` | `3` | H743 연결이 끊겼을 때 재연결 대기 시간(초) |
+| `FC_POSITION_MAX_AGE_SEC` | `3` | RSS와 결합할 수 있는 H743 위치의 최대 경과 시간(초) |
 | `SERVER_URL` | `http://127.0.0.1:8001` | 서버 base URL (경로 접미사 없이) |
 | `SEND_INTERVAL` | `2` | mock 모드에서 패킷 생성 간격(초) |
 | `REQUEST_TIMEOUT` | `5` | 서버 응답 대기 시간(초) |
@@ -72,7 +63,6 @@ INPUT_MODE=raw_debug SERIAL_PORT=/dev/ttyUSB0 python3 main.py
 | `DETECTION_MODE` | `fpga` | `fpga`(인터럽트 대기, 아직 미구현) / `rss_threshold`(RSS 임계값으로 자체 판단) |
 | `RSS_DETECTION_THRESHOLD` | `-45.0` | `rss_threshold` 모드에서 탐지로 판단할 RSS 임계값(dBm) |
 | `DETECTION_COOLDOWN_SEC` | `60` | 같은 드론에 대해 탐지를 다시 트리거하기까지 최소 대기 시간(초) |
-| `SERIAL_RECONNECT_DELAY_SEC` | `3` | 시리얼 연결이 끊겼을 때 재연결까지 대기 시간(초) |
 
 ## 테스트
 
@@ -80,8 +70,8 @@ INPUT_MODE=raw_debug SERIAL_PORT=/dev/ttyUSB0 python3 main.py
 python3 -m unittest discover -s tests
 ```
 
-`packet_parser.py`의 파싱/검증 로직과 `client.py`의 재시도/dry-run 로직을 다룹니다
-(네트워크·서버 없이 동작).
+MAVLink 변환·SDR/FPGA 파이프라인·서버 전송 로직을 다룹니다
+(실제 장비와 네트워크 없이 동작).
 
 ## 참고
 
@@ -90,5 +80,3 @@ python3 -m unittest discover -s tests
   그 전까지 시연이 필요하면 `DETECTION_MODE=rss_threshold`로 전환해서 쓰면 됩니다.
 - Raspberry Pi 측 `RtlSdrSource`와 `SpiFpgaTransport`는 구현되어 있습니다. 실제 종단 간 연결에는
   FPGA RTL의 SPI slave와 연산 완료 READY 처리가 필요합니다.
-- 패킷 포맷(필드 개수/순서)은 실제 HW와 확정된 스펙이 아닙니다. 실기기 연결 후
-  `INPUT_MODE=raw_debug`로 먼저 원본을 확인하고, 다르면 `packet_parser.py`만 고치면 됩니다.

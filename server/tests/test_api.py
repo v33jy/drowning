@@ -50,6 +50,21 @@ class TelemetryTests(ApiTestCase):
         self.assertEqual(len(listed), 1)
         self.assertEqual(listed[0]["drone_id"], 1)
 
+    def test_post_telemetry_accepts_unknown_battery(self):
+        payload = {
+            **self._mid_point(),
+            "altitude": 50.0,
+            "battery": None,
+        }
+
+        resp = self.client.post("/drones/1/telemetry", json=payload)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.json()["battery"])
+
+        listed = self.client.get("/drones").json()
+        self.assertIsNone(listed[0]["battery"])
+
 
 class SignalTests(ApiTestCase):
     def test_signal_before_telemetry_returns_404(self):

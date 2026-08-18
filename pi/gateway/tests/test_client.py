@@ -82,9 +82,26 @@ class SendTelemetryTests(unittest.TestCase):
     def tearDown(self):
         self.client.close()
 
-    def test_missing_battery_returns_none(self):
-        result = self.client.send_telemetry({"drone_id": "drone-01", "latitude": 1.0, "longitude": 2.0})
-        self.assertIsNone(result)
+    def test_missing_battery_posts_unknown_value(self):
+        with patch.object(
+            self.client,
+            "_post_with_retry",
+            return_value={"cell_id": "A0"},
+        ) as mock_post:
+            result = self.client.send_telemetry({
+                "drone_id": "drone-01",
+                "latitude": 1.0,
+                "longitude": 2.0,
+            })
+
+        mock_post.assert_called_once_with("/drones/1/telemetry", {
+            "lat": 1.0,
+            "lng": 2.0,
+            "altitude": 0.0,
+            "battery": None,
+            "status": "active",
+        })
+        self.assertEqual(result, {"cell_id": "A0"})
 
     def test_valid_payload_posts_to_telemetry_path(self):
         with patch.object(self.client, "_post_with_retry", return_value={"cell_id": "A0"}) as mock_post:

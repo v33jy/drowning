@@ -6,7 +6,11 @@ from typing import Optional
 
 from client import GatewayClient, extract_drone_id
 from config import settings
-from packet_parser import PacketParseError, parse_packet
+from mavlink_telemetry import (
+    MavlinkTelemetryService,
+    combine_measurements,
+)
+from measurement import SignalMeasurement, SignalObservation
 from signal_pipeline.factory import create_fpga_transport, create_sdr_source
 from signal_pipeline.pipeline import SignalPipeline
 
@@ -15,20 +19,29 @@ from signal_pipeline.pipeline import SignalPipeline
 _START_LAT, _START_LNG = 37.4979, 127.0276
 _TARGET_LAT, _TARGET_LNG = 37.5044, 127.0248
 _APPROACH_STEPS = 30
-_SIGNAL_PIPELINE_MODES = ("signal_pipeline", "signal_mock")
+_SIGNAL_PIPELINE_MODE = "signal_pipeline"
 
 
-def _build_packet(latitude: float, longitude: float, rssi: int, battery: int) -> str:
-    return (
-        f"drone-01,"
-        f"{rssi},"
-        f"{latitude:.6f},"
-        f"{longitude:.6f},"
-        f"{battery}"
+def _build_mock_observation(
+    latitude: float,
+    longitude: float,
+    rssi: int,
+    battery: int,
+) -> SignalObservation:
+    measured_at = time.time()
+    return SignalObservation(
+        drone_id=settings.drone_id,
+        rss_dbm=float(rssi),
+        latitude=latitude,
+        longitude=longitude,
+        altitude=0.0,
+        battery=battery,
+        signal_measured_at=measured_at,
+        position_measured_at=measured_at,
     )
 
 
-def generate_mock_packets() -> Iterator[str]:
+def generate_mock_observations() -> Iterator[SignalObservation]:
     """Replay the same Gangnam -> Sinnonhyeon approach as scenario.py so it
     works without real hardware. RSS strengthens on approach, which lets
     DETECTION_MODE=rss_threshold actually fire; hovers in place after arrival."""
@@ -44,133 +57,63 @@ def generate_mock_packets() -> Iterator[str]:
         dist = math.hypot(latitude - _TARGET_LAT, longitude - _TARGET_LNG)
         rssi = int(max(-100.0, min(-40.0, -40.0 - dist * 3000)))
 
-        yield _build_packet(latitude, longitude, rssi, int(battery))
+        yield _build_mock_observation(
+            latitude,
+            longitude,
+            rssi,
+            int(battery),
+        )
         time.sleep(settings.send_interval)
 
     while True:
         battery = max(10.0, battery - 0.05)
         rssi = -40 + random.randint(-3, 0)
-        yield _build_packet(_TARGET_LAT, _TARGET_LNG, rssi, int(battery))
+        yield _build_mock_observation(
+            _TARGET_LAT,
+            _TARGET_LNG,
+            rssi,
+            int(battery),
+        )
         time.sleep(settings.send_interval)
 
 
-def generate_signal_pipeline_packets() -> Iterator[str]:
-    """Generate gateway packets from the configured SDR/FPGA pipeline."""
+def generate_signal_measurements() -> Iterator[SignalMeasurement]:
+    """Generate RSS measurements from the configured SDR/FPGA pipeline."""
     pipeline = SignalPipeline(
         sdr_source=create_sdr_source(),
         fpga_transport=create_fpga_transport(),
     )
-    battery = 100.0
-    step = 1
-
     try:
         while True:
-            t = min(step / _APPROACH_STEPS, 1.0)
-            latitude = _START_LAT + (_TARGET_LAT - _START_LAT) * t
-            longitude = _START_LNG + (_TARGET_LNG - _START_LNG) * t
-            drain = 0.25 if step <= _APPROACH_STEPS else 0.05
-            battery = max(10.0, battery - drain)
-
             result = pipeline.process_next_frame()
-            rssi = int(round(result.rss_dbm))
             print(
-                f"[signal pipeline] sequence={result.sequence} "
+                f"[SIGNAL] sequence={result.sequence} "
                 f"peak_bin={result.peak_bin} rss={result.rss_dbm:.2f}dBm "
                 f"detected={result.detected}"
             )
 
-            yield _build_packet(latitude, longitude, rssi, int(battery))
-            step += 1
+            yield SignalMeasurement(
+                rss_dbm=result.rss_dbm,
+                measured_at=time.time(),
+            )
             time.sleep(settings.send_interval)
     finally:
         pipeline.close()
 
 
-def _read_serial_lines() -> Iterator[str]:
-    """Read UART lines. If the connection drops (drone vibration, loose
-    cable), keep retrying instead of killing the process."""
-    try:
-        import serial
-
-    except ImportError as error:
-        raise RuntimeError(
-            "pyserial is not installed. Run 'pip install pyserial'."
-        ) from error
-
-    while True:
-        try:
-            print(
-                f"[UART connecting] port={settings.serial_port}, "
-                f"baud={settings.baud_rate}"
-            )
-
-            with serial.Serial(
-                port=settings.serial_port,
-                baudrate=settings.baud_rate,
-                timeout=1
-            ) as serial_connection:
-                print("[UART connected]")
-
-                while True:
-                    raw_data = serial_connection.readline()
-
-                    if not raw_data:
-                        continue
-
-                    try:
-                        decoded_data = raw_data.decode(
-                            "utf-8",
-                            errors="strict"
-                        ).strip()
-
-                    except UnicodeDecodeError:
-                        print("[decode error] data is not valid UTF-8.")
-                        continue
-
-                    if decoded_data:
-                        yield decoded_data
-
-        except KeyboardInterrupt:
-            raise
-
-        except serial.SerialException as error:
-            print(
-                f"[UART disconnected] {error} — "
-                f"retrying in {settings.serial_reconnect_delay_sec}s"
-            )
-            time.sleep(settings.serial_reconnect_delay_sec)
-
-
-def read_serial_packets() -> Iterator[str]:
-    """Read one packet per line from the Raspberry Pi's USB UART/serial port."""
-    return _read_serial_lines()
-
-
-def run_raw_debug() -> None:
-    """Print raw serial lines without parsing or sending — lets you check
-    whether real hardware matches the format packet_parser.py assumes
-    (5-field CSV) before wiring up the rest."""
-    print("[debug mode] printing raw packets only, not sending to server.")
-    for raw_data in _read_serial_lines():
-        print(f"[raw] {raw_data!r}")
-
-
-def get_packet_source() -> Iterator[str]:
-    """Pick mock, signal pipeline, or UART input based on settings."""
+def get_measurement_source(
+) -> Iterator[SignalMeasurement | SignalObservation]:
+    """Pick the all-mock or real hardware telemetry source."""
 
     mode = settings.input_mode.lower()
 
     if mode == "mock":
         print("[input mode] mock test data")
-        return generate_mock_packets()
+        return generate_mock_observations()
 
-    if mode in _SIGNAL_PIPELINE_MODES:
-        print("[input mode] configurable SDR -> FPGA signal pipeline")
-        return generate_signal_pipeline_packets()
-
-    if mode == "serial":
-        print("[input mode] UART serial data")
-        return read_serial_packets()
+    if mode == _SIGNAL_PIPELINE_MODE:
+        print("[input mode] H743 MAVLink + SDR -> FPGA signal pipeline")
+        return generate_signal_measurements()
 
     raise ValueError(
         f"Unsupported INPUT_MODE: {settings.input_mode}"
@@ -180,7 +123,7 @@ def get_packet_source() -> Iterator[str]:
 def uses_rss_detection() -> bool:
     return (
         settings.detection_mode.lower() == "rss_threshold"
-        or settings.input_mode.lower() in _SIGNAL_PIPELINE_MODES
+        or settings.input_mode.lower() == _SIGNAL_PIPELINE_MODE
     )
 
 
@@ -196,7 +139,12 @@ def check_fpga_detection() -> Optional[tuple[int, float]]:
     return None
 
 
-def _try_send_detection(client: GatewayClient, drone_id: int, cell_id: Optional[str], rss_dbm: float) -> None:
+def _try_send_detection(
+    client: GatewayClient,
+    drone_id: int,
+    cell_id: Optional[str],
+    rss_dbm: float
+) -> None:
     """Skip sending if cell_id is missing (outside the grid) — the server
     would reject it with 422 anyway, so don't waste retries on it."""
     if cell_id is None:
@@ -242,17 +190,12 @@ def main() -> None:
     print(f"Input Mode     : {settings.input_mode}")
     print(f"Server URL     : {settings.server_url}")
     print(f"Detection Mode : {settings.detection_mode}")
+    print(
+        "MAVLink        : "
+        f"{settings.input_mode.lower() == _SIGNAL_PIPELINE_MODE}"
+    )
     print(f"Dry Run        : {settings.dry_run}")
     print("=" * 50)
-
-    if settings.input_mode.lower() == "raw_debug":
-        try:
-            run_raw_debug()
-        except KeyboardInterrupt:
-            print("\n[stopped] interrupted by user.")
-        except Exception as error:
-            print(f"\n[fatal error] {error}")
-        return
 
     client = GatewayClient(
         server_url=settings.server_url,
@@ -267,42 +210,72 @@ def main() -> None:
         cooldown_sec=settings.detection_cooldown_sec,
     )
 
-    packet_source = None
+    measurement_source = None
+    mavlink_service = None
 
     try:
-        packet_source = get_packet_source()
+        if settings.input_mode.lower() == _SIGNAL_PIPELINE_MODE:
+            mavlink_service = MavlinkTelemetryService(
+                port=settings.fc_serial_port,
+                baud_rate=settings.fc_baud_rate,
+                reconnect_delay_sec=settings.fc_reconnect_delay_sec,
+            )
+            mavlink_service.start()
+            print(
+                f"[MAVLink] enabled port={settings.fc_serial_port} "
+                f"baud={settings.fc_baud_rate}"
+            )
 
-        for raw_packet in packet_source:
-            print(f"\n[raw packet] {raw_packet}")
+        measurement_source = get_measurement_source()
 
-            try:
-                telemetry = parse_packet(raw_packet)
+        for measurement in measurement_source:
+            print(f"\n[Gateway] measurement={measurement}")
 
-            except PacketParseError as error:
-                print(f"[packet error] {error}")
-                continue
+            if mavlink_service is not None:
+                if not isinstance(measurement, SignalMeasurement):
+                    raise TypeError(
+                        "signal_pipeline must produce SignalMeasurement"
+                    )
+                flight_data = mavlink_service.latest(
+                    settings.fc_position_max_age_sec
+                )
+                if flight_data is None:
+                    print(
+                        "[MAVLink] no fresh GPS/battery telemetry; "
+                        "signal sample skipped"
+                    )
+                    continue
+                observation = combine_measurements(
+                    measurement,
+                    flight_data,
+                    settings.drone_id,
+                )
+            else:
+                if not isinstance(measurement, SignalObservation):
+                    raise TypeError(
+                        "mock mode must produce SignalObservation"
+                    )
+                observation = measurement
 
-            print(f"[parsed] {telemetry}")
+            print(f"[Gateway] ready={observation}")
 
-            # Capture sample time before the telemetry HTTP round trip so the
-            # RSS observation reflects when this packet was received.
-            measured_at = time.time()
-
-            response = client.send_telemetry(telemetry)
+            response = client.send_telemetry(
+                observation.telemetry_payload()
+            )
             if response is None:
                 continue
 
-            drone_id = extract_drone_id(telemetry["drone_id"])
+            drone_id = extract_drone_id(observation.drone_id)
             cell_id = response.get("cell_id")
-            rssi = telemetry["rssi"]
+            rssi = observation.rss_dbm
 
             client.send_signal(
                 drone_id,
                 rssi,
-                lat=float(telemetry["latitude"]),
-                lng=float(telemetry["longitude"]),
-                altitude=float(telemetry.get("altitude", 0.0)),
-                measured_at=measured_at,
+                lat=observation.latitude,
+                lng=observation.longitude,
+                altitude=observation.altitude,
+                measured_at=observation.signal_measured_at,
             )
 
             if uses_rss_detection():
@@ -312,7 +285,12 @@ def main() -> None:
                 detected = check_fpga_detection()
                 if detected is not None:
                     fpga_drone_id, fpga_rss = detected
-                    _try_send_detection(client, fpga_drone_id, cell_id, fpga_rss)
+                    _try_send_detection(
+                        client,
+                        fpga_drone_id,
+                        cell_id,
+                        fpga_rss
+                    )
 
     except KeyboardInterrupt:
         print("\n[stopped] interrupted by user.")
@@ -321,10 +299,14 @@ def main() -> None:
         print(f"\n[fatal error] {error}")
 
     finally:
-        if packet_source is not None:
-            close = getattr(packet_source, "close", None)
+        if mavlink_service is not None:
+            mavlink_service.close()
+
+        if measurement_source is not None:
+            close = getattr(measurement_source, "close", None)
             if close is not None:
                 close()
+
         client.close()
         print("[stopped] gateway connections closed.")
 
