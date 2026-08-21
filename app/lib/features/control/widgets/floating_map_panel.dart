@@ -27,14 +27,7 @@ class FloatingMapPanel extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withValues(alpha: 0.94),
-                  const Color(0xFFEAF0F7).withValues(alpha: 0.88),
-                ],
-              ),
+              color: const Color(0xFFF4F7FB),
               border: Border.all(color: Colors.white.withValues(alpha: 0.92)),
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
@@ -60,7 +53,7 @@ class FloatingMapPanel extends StatelessWidget {
 
     return Stack(
       children: [
-        Positioned.fill(child: panel),
+        panel,
         Positioned(
           left: 2,
           bottom: 2,

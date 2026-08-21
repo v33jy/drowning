@@ -17,6 +17,7 @@ class DetectionPanelStack extends StatelessWidget {
     required this.gridDefinition,
     required this.onDetectionTap,
     required this.onOutcome,
+    required this.onResize,
     super.key,
   });
 
@@ -29,6 +30,7 @@ class DetectionPanelStack extends StatelessWidget {
   final Map<String, CellBounds> gridDefinition;
   final ValueChanged<DetectionEvent> onDetectionTap;
   final ValueChanged<DetectionOutcome> onOutcome;
+  final ValueChanged<DragUpdateDetails> onResize;
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +44,7 @@ class DetectionPanelStack extends StatelessWidget {
       children: [
         FloatingMapPanel(
           maxHeight: maxHeight - previous.length * _noticeSlotHeight,
+          onResize: onResize,
           child: DetectionSheet(
             key: ValueKey(activeDetection.detectionId),
             event: activeDetection,

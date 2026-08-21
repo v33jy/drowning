@@ -150,7 +150,7 @@ class _HelpScreenState extends State<HelpScreen>
           items: [
             _GuideItem('위치 확인', '격자 위치와 가까운 랜드마크를 먼저 확인합니다.'),
             _GuideItem('상태 판단', '신호 강도와 반복 여부, 현장 영상을 함께 확인합니다.'),
-            _GuideItem('결과 처리', '구조 완료 또는 깃발 버튼으로 오탐 처리합니다.'),
+            _GuideItem('결과 처리', '대기로 두기·오탐 처리·구조 완료 중 현재 상황에 맞는 결과를 선택합니다.'),
           ],
         ),
         _GuideSection(

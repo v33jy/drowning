@@ -141,30 +141,16 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(elapsed, style: Theme.of(context).textTheme.labelSmall),
-                IconButton(
-                  tooltip: '오탐 처리',
-                  onPressed: _confirmFalseAlarm,
-                  icon: const Icon(
-                    Icons.flag_outlined,
-                    size: 18,
-                    color: AppColors.danger,
-                  ),
-                ),
                 if (widget.showCloseButton)
                   IconButton(
                     tooltip: '닫기',
                     onPressed: _minimize,
-                    icon: Icon(
-                      widget.onOutcome == null
-                          ? Icons.remove_circle_outline
-                          : Icons.close,
-                      size: 20,
-                      color: AppColors.textSecondary,
-                    ),
+                    icon: const Icon(Icons.close, size: 20),
                   ),
               ],
             ),
           ),
+          const SizedBox(height: AppSpacing.md),
           const SearchActionSummary(
             action: '해당 위치를 저고도로 다시 통과하세요.',
             reason: '같은 위치에서 신호가 반복되어 추가 확인이 필요합니다.',
@@ -176,6 +162,7 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
           const SizedBox(height: AppSpacing.md),
           DetectionActions(
             callSessionId: event.callSessionId,
+            onFalseAlarm: _confirmFalseAlarm,
             onRescued: () => _resolve(DetectionOutcome.rescued),
           ),
         ],

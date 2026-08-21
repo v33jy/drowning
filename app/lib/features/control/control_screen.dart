@@ -37,7 +37,8 @@ class ControlScreen extends ConsumerStatefulWidget {
 
 class _ControlScreenState extends ConsumerState<ControlScreen> {
   static const _defaultSearchPanelWidth = 440.0;
-  static const _defaultSearchPanelHeight = 640.0;
+  static const _defaultSearchPanelHeight = 480.0;
+  static const _defaultDetectionPanelHeight = 640.0;
   static const _minimumSearchPanelExtent = 320.0;
   static const _mapOverlayTop = 92.0;
   static const _mapOverlayVerticalInset = 108.0;
@@ -48,6 +49,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
   String? _selectedCellId;
   double _searchPanelWidth = _defaultSearchPanelWidth;
   double _searchPanelHeight = _defaultSearchPanelHeight;
+  double _detectionPanelWidth = _defaultSearchPanelWidth;
+  double _detectionPanelHeight = _defaultDetectionPanelHeight;
 
   @override
   void dispose() {
@@ -107,9 +110,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
       top: _mapOverlayTop,
       right: AppSpacing.md,
       width: panelWidth,
-      height: panelHeight,
       child: FloatingMapPanel(
-        maxHeight: maxHeight,
+        maxHeight: panelHeight,
         onResize: (details) => setState(() {
           _searchPanelWidth = (_searchPanelWidth - details.delta.dx)
               .clamp(minWidth, maxWidth)
@@ -127,6 +129,59 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
             cellId: selectedCellId,
             onClose: () => setState(() => _selectedCellId = null),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResizableDetectionPanel(
+    BoxConstraints constraints,
+    DetectionEvent activeDetection,
+    List<DetectionEvent> pendingDetections,
+    Map<String, String> locationLabels,
+    Map<String, CellBounds> gridDefinition,
+  ) {
+    final maxWidth = constraints.maxWidth - AppSpacing.md * 2;
+    final maxHeight = constraints.maxHeight - _mapOverlayVerticalInset;
+    final minWidth = math.min(maxWidth, _minimumSearchPanelExtent);
+    final minHeight = math.min(maxHeight, _minimumSearchPanelExtent);
+    final panelWidth = _detectionPanelWidth
+        .clamp(minWidth, maxWidth)
+        .toDouble();
+    final panelHeight = _detectionPanelHeight
+        .clamp(minHeight, maxHeight)
+        .toDouble();
+    final widthScale = panelWidth / _defaultSearchPanelWidth;
+    final heightScale = panelHeight / _defaultDetectionPanelHeight;
+    final textScale = math
+        .max(widthScale, heightScale)
+        .clamp(0.9, 1.3)
+        .toDouble();
+
+    return Positioned(
+      top: _mapOverlayTop,
+      right: AppSpacing.md,
+      width: panelWidth,
+      child: MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: DetectionPanelStack(
+          maxHeight: panelHeight,
+          activeDetection: activeDetection,
+          pendingDetections: pendingDetections,
+          locationLabels: locationLabels,
+          gridDefinition: gridDefinition,
+          onDetectionTap: _openDetectionPanel,
+          onOutcome: _handleDetectionOutcome,
+          onResize: (details) => setState(() {
+            _detectionPanelWidth = (_detectionPanelWidth - details.delta.dx)
+                .clamp(minWidth, maxWidth)
+                .toDouble();
+            _detectionPanelHeight = (_detectionPanelHeight + details.delta.dy)
+                .clamp(minHeight, maxHeight)
+                .toDouble();
+          }),
         ),
       ),
     );
@@ -215,20 +270,12 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                     child: OfflineBanner(),
                   ),
                   if (activeDetection != null)
-                    Positioned(
-                      top: _mapOverlayTop,
-                      right: AppSpacing.md,
-                      width: 400,
-                      child: DetectionPanelStack(
-                        maxHeight:
-                            constraints.maxHeight - _mapOverlayVerticalInset,
-                        activeDetection: activeDetection,
-                        pendingDetections: pendingDetections,
-                        locationLabels: locationLabels,
-                        gridDefinition: gridDefinition,
-                        onDetectionTap: _openDetectionPanel,
-                        onOutcome: _handleDetectionOutcome,
-                      ),
+                    _buildResizableDetectionPanel(
+                      constraints,
+                      activeDetection,
+                      pendingDetections,
+                      locationLabels,
+                      gridDefinition,
                     ),
                   if (activeDetection == null && selectedCellId != null)
                     _buildResizableSearchPanel(constraints, selectedCellId),
