@@ -17,7 +17,6 @@ class _HelpScreenState extends State<HelpScreen>
   late final TabController _tabController;
 
   static const _tabs = [
-    _HelpTab(Icons.flight_rounded, '드론'),
     _HelpTab(Icons.radar_rounded, '탐지 대응'),
     _HelpTab(Icons.history_rounded, '기록'),
     _HelpTab(Icons.build_circle_outlined, '문제 해결'),
@@ -109,33 +108,6 @@ class _HelpScreenState extends State<HelpScreen>
 
   Widget _tabContent(int index) => switch (index) {
     0 => const _TopicContent(
-      title: '드론 상태 읽기',
-      description: '지도와 드론 목록에서 위치, 임무 상태, 배터리를 먼저 확인하세요.',
-      sections: [
-        _GuideSection(
-          icon: Icons.map_rounded,
-          title: '지도에서 확인할 것',
-          items: [
-            _GuideItem('위치', '드론 아이콘과 담당 수색 구역이 일치하는지 확인합니다.'),
-            _GuideItem('임무 상태', '대기·이동·수색 중 상태를 확인해 즉시 투입 가능 여부를 판단합니다.'),
-            _GuideItem('신호 구역', '강조된 격자는 신호가 수집되었거나 재확인이 필요한 위치입니다.'),
-          ],
-        ),
-        _GuideSection(
-          icon: Icons.battery_5_bar_rounded,
-          title: '출동 전 점검',
-          items: [
-            _GuideItem(
-              '배터리',
-              '잔량이 낮은 드론은 장거리 이동 전에 교체 또는 복귀시킵니다.',
-              warning: true,
-            ),
-            _GuideItem('고도·통신', '수치가 멈춰 있으면 명령을 보내기 전에 연결 상태를 확인합니다.'),
-          ],
-        ),
-      ],
-    ),
-    1 => const _TopicContent(
       title: '신호 발견 시 대응',
       description: '탐지 알림이 오면 아래 순서를 유지해 위치 누락과 오판을 줄이세요.',
       callout: _ActionCallout(
@@ -164,7 +136,7 @@ class _HelpScreenState extends State<HelpScreen>
         ),
       ],
     ),
-    2 => const _TopicContent(
+    1 => const _TopicContent(
       title: '상황 기록 확인',
       description: '탐지부터 구조 완료까지의 판단 근거와 처리 결과를 시간순으로 확인합니다.',
       sections: [
