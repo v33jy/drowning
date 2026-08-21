@@ -10,8 +10,10 @@ import 'drone_icon.dart';
 
 Severity droneSeverity(DroneState d) {
   if (d.status == 'lost') return Severity.offline;
-  if (d.battery <= 20) return Severity.danger;
-  if (d.battery <= 40) return Severity.warning;
+  final battery = d.battery;
+  if (battery == null) return Severity.warning;
+  if (battery <= 20) return Severity.danger;
+  if (battery <= 40) return Severity.warning;
   return Severity.ok;
 }
 
@@ -19,12 +21,17 @@ Severity droneSeverity(DroneState d) {
 /// thresholds, never from the raw telemetry `status` string directly. Those
 /// two used to be computed independently (severity from battery, label from
 /// `status`), which could show "정상" in red when battery was critical.
-String droneStatusLabel(DroneState d) => switch (droneSeverity(d)) {
-  Severity.offline => 'Offline',
-  Severity.danger => '위험',
-  Severity.warning => '주의',
-  Severity.ok => '정상',
-};
+String droneStatusLabel(DroneState d) {
+  if (d.status == 'lost') return 'Offline';
+  if (d.battery == null) return '배터리 미확인';
+
+  return switch (droneSeverity(d)) {
+    Severity.offline => 'Offline',
+    Severity.danger => '위험',
+    Severity.warning => '주의',
+    Severity.ok => '정상',
+  };
+}
 
 /// Drone markers only — rebuilds when [dronesProvider] changes, independent
 /// of the FlutterMap widget itself (map position/zoom survives untouched).

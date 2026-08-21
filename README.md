@@ -13,14 +13,14 @@
                 ──HTTP──▶  /detection              ──WebSocket──▶  탐지 알림 팝업
                 ──WS(스트림)──▶ /drones/{id}/video  ──WebSocket──▶  팝업 내 영상 프리뷰
 
-[라즈베리파이 (pi/)]      (실제 UART 하드웨어·카메라 연동, 위와 동일한 엔드포인트를 침)
+[라즈베리파이 (pi/)]      (H743·SDR·FPGA·카메라 연동, 위와 동일한 엔드포인트를 침)
   pi/gateway/main.py      ──HTTP──▶  위와 동일 (telemetry·signal·detection)
   pi/camera_stream.py     ──WS(스트림)──▶  /drones/{id}/video
 ```
 
 - `server/` — FastAPI 백엔드. 드론 텔레메트리·신호·탐지·영상을 받아서 WebSocket으로 관제 앱에 뿌림
 - `app/` — Flutter 관제 앱 (iPad 대상, 가로 고정). 단일 운용 드론의 위치와 상태, 구조 탐색 구역, 탐지 팝업, 음성 연결, 영상 프리뷰 및 수색 활동 기록을 보여줌
-- `pi/` — 실제 라즈베리파이에 올려서 실행하는 코드. `gateway/`(UART로 받은 드론 패킷을 서버로 전달, `scenario.py`가 가짜 데이터로 대신하는 것과 같은 자리)와 `camera_stream.py`(카메라 영상을 서버로 스트리밍)
+- `pi/` — 실제 라즈베리파이에 올려서 실행하는 코드. `gateway/`(H743 MAVLink 텔레메트리와 SDR/FPGA 신호를 서버로 전달)와 `camera_stream.py`(카메라 영상을 서버로 스트리밍)
 
 ## 실행 방법
 
@@ -64,7 +64,7 @@ DRONE_SERVER_URL=http://localhost:8001 python3 -u scenario.py
 
 ### 4. 라즈베리파이 게이트웨이 (실제 하드웨어 연동)
 
-`scenario.py`/`dummy.py` 대신 실제 UART 하드웨어로 telemetry·signal·detection을 보내고 싶을 때 씁니다.
+`scenario.py`/`dummy.py` 대신 실제 H743·RTL-SDR·FPGA로 telemetry·signal·detection을 보내고 싶을 때 씁니다.
 서버가 켜진 상태에서, 라즈베리파이 또는 다른 터미널에서:
 
 ```bash
@@ -76,21 +76,15 @@ pip install -r requirements.txt
 INPUT_MODE=mock DETECTION_MODE=rss_threshold SERVER_URL=http://localhost:8001 python3 main.py
 ```
 
-실제 UART 장치를 붙일 땐 `INPUT_MODE=serial`로, 패킷 포맷이 맞는지 먼저 확인하고 싶으면
-`INPUT_MODE=raw_debug`로 실행하면 됩니다. 시리얼 연결이 끊겨도 자동으로 재연결을 시도합니다.
-
-RTL-SDR과 FPGA 신호처리 파이프라인은 다음처럼 실행합니다. SDR 또는 FPGA만 mock으로 두어
-구간별로 확인할 수도 있습니다.
+실제 하드웨어 파이프라인은 H743 MAVLink와 RTL-SDR/FPGA를 함께 실행합니다.
+SDR 또는 FPGA만 mock으로 두어 구간별로 확인할 수도 있습니다.
 
 ```bash
 pip install -r requirements-hardware.txt
 
-# 전체 mock
-INPUT_MODE=signal_pipeline SDR_MODE=mock FPGA_MODE=mock \
-  DETECTION_MODE=rss_threshold python3 main.py
-
-# 실제 RTL-SDR + 실제 FPGA SPI
+# 실제 H743 + 실제 RTL-SDR + 실제 FPGA SPI
 INPUT_MODE=signal_pipeline SDR_MODE=real FPGA_MODE=real \
+  FC_SERIAL_PORT=/dev/serial0 FC_BAUD_RATE=115200 \
   DETECTION_MODE=rss_threshold python3 main.py
 ```
 
@@ -112,3 +106,28 @@ python3 camera_stream.py --mock --drone-id 1
 ## 참고
 - 서버는 DB 없이 전부 인메모리로 동작합니다. 재시작하면 상태가 초기화됩니다.
 - 현재 관제 UI는 프로젝트 범위에 맞춰 단일 드론 중심으로 구성했습니다. 서버와 앱의 상태 저장 구조는 드론 ID를 유지해 향후 다중 드론 관제로 확장할 수 있습니다.
+
+## H743 비행제어보드 연동
+
+Raspberry Pi는 H743 비행제어보드와 UART로 연결하여 MAVLink 기반의
+GPS 위치, 고도, 배터리 및 비행 상태 정보를 수신할 수 있습니다.
+
+`signal_pipeline`은 H743 MAVLink와 RTL-SDR/FPGA를 하나의 실제 하드웨어
+파이프라인으로 실행합니다.
+
+```bash
+INPUT_MODE=signal_pipeline \
+SDR_MODE=real \
+FPGA_MODE=real \
+FC_SERIAL_PORT=/dev/serial0 \
+FC_BAUD_RATE=115200 \
+python3 main.py
+```
+
+현재 Baud rate는 `115200`으로 설정되어 있습니다.
+
+`FC_SERIAL_PORT=/dev/serial0`은 기본값이며, 실제 Raspberry Pi와 H743를
+연결한 후 사용되는 UART 포트를 확인하여 변경해야 합니다.
+
+자세한 설정과 실행 방법은
+[`pi/gateway/README.md`](pi/gateway/README.md)를 참고하세요.

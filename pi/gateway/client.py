@@ -39,6 +39,7 @@ class GatewayClient:
 
         try:
             drone_id = extract_drone_id(telemetry["drone_id"])
+            raw_battery = telemetry.get("battery")
 
             payload = {
                 "lat": float(
@@ -48,7 +49,11 @@ class GatewayClient:
                     telemetry.get("lng", telemetry.get("longitude"))
                 ),
                 "altitude": float(telemetry.get("altitude", 0.0)),
-                "battery": int(telemetry["battery"]),
+                "battery": (
+                    int(raw_battery)
+                    if raw_battery is not None
+                    else None
+                ),
                 "status": str(telemetry.get("status", "active"))
             }
 

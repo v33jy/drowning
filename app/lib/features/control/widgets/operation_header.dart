@@ -140,7 +140,7 @@ class _DroneStatus extends StatelessWidget {
     final activeDrone = drone;
     if (activeDrone == null) return const SizedBox.shrink();
     return Text(
-      '드론 ${activeDrone.droneId} · 배터리 ${activeDrone.battery}% · '
+      '드론 ${activeDrone.droneId} · 배터리 ${activeDrone.batteryLabel} · '
       '고도 ${activeDrone.altitude.toStringAsFixed(0)}m',
       style: Theme.of(context).textTheme.labelMedium,
     );
