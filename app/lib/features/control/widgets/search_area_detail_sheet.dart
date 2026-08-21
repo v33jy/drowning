@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../config.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../models/heatmap_cell.dart';
@@ -61,6 +62,7 @@ class SearchAreaDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final guidance = SearchAreaGuidance.fromCell(cell);
+    final capturedAgo = formatSavedVideoAge(cell.lastUpdated);
 
     return SingleChildScrollView(
       child: Column(
@@ -72,42 +74,66 @@ class SearchAreaDetailSheet extends StatelessWidget {
             statusColor: guidance.color,
             locationLabel: locationLabel,
             trailing: onClose == null
-                ? null
-                : IconButton(
-                    tooltip: '닫기',
-                    onPressed: onClose,
-                    icon: const Icon(Icons.close, size: 20),
+                ? Text(
+                    formatLastChecked(cell.lastUpdated),
+                    style: Theme.of(context).textTheme.labelSmall,
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        formatLastChecked(cell.lastUpdated),
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                      IconButton(
+                        tooltip: '닫기',
+                        onPressed: onClose,
+                        icon: const Icon(Icons.close, size: 20),
+                      ),
+                    ],
                   ),
           ),
           const SizedBox(height: AppSpacing.md),
           SearchActionSummary(action: guidance.action, reason: guidance.reason),
           const SizedBox(height: AppSpacing.md),
-          _InfoRow(label: '최근 확인', value: formatLastChecked(cell.lastUpdated)),
-          const SizedBox(height: AppSpacing.md),
-          const _SectionLabel('확인 영상'),
-          const SizedBox(height: AppSpacing.sm),
-          _SectionSurface(
-            padding: EdgeInsets.zero,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const _MockLiveVideo(),
-                if (videoReview != null) ...[
-                  const SizedBox(height: AppSpacing.sm),
+          if (capturedAgo != null) ...[
+            const _SectionLabel('저장된 영상'),
+            const SizedBox(height: AppSpacing.sm),
+            _SectionSurface(
+              padding: EdgeInsets.zero,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _MockLiveVideo(),
                   Padding(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    child: videoReview,
+                    padding: const EdgeInsets.fromLTRB(12, 9, 12, 11),
+                    child: Text(
+                      '$capturedAgo 촬영',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
                   ),
+                  if (videoReview != null && !Config.demoMode)
+                    Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child: videoReview,
+                    ),
                 ],
-              ],
+              ),
             ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          const _CallPreview(),
+          ],
         ],
       ),
     );
   }
+}
+
+String? formatSavedVideoAge(DateTime? timestamp, {DateTime? now}) {
+  if (timestamp == null) return null;
+  final elapsed = (now ?? DateTime.now()).toUtc().difference(timestamp.toUtc());
+  if (elapsed.isNegative || elapsed.inMinutes < 1) return '방금 전';
+  if (elapsed.inHours < 1) return '${elapsed.inMinutes}분 전';
+  if (elapsed.inHours < 24) return '${elapsed.inHours}시간 전';
+  return null;
 }
 
 enum _DemoCallState { idle, connecting, connected, ended }
@@ -634,26 +660,6 @@ class _MockLiveVideo extends StatelessWidget {
           ],
         ),
       ),
-    ),
-  );
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: const TextStyle(color: AppColors.textSecondary)),
-        const SizedBox(width: AppSpacing.sm),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
-      ],
     ),
   );
 }

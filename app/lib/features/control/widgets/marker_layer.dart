@@ -33,6 +33,9 @@ String droneStatusLabel(DroneState d) {
   };
 }
 
+double droneMarkerScale(double zoom) =>
+    (1 + (zoom - 15) * 0.16).clamp(0.75, 1.8).toDouble();
+
 /// Drone markers only — rebuilds when [dronesProvider] changes, independent
 /// of the FlutterMap widget itself (map position/zoom survives untouched).
 class DroneMarkerLayer extends ConsumerWidget {
@@ -41,15 +44,19 @@ class DroneMarkerLayer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final drones = ref.watch(dronesProvider);
+    final markerScale = droneMarkerScale(MapCamera.of(context).zoom);
     return MarkerLayer(
       markers: [
         for (final d in drones.values)
           Marker(
             key: ValueKey(d.droneId),
             point: d.position,
-            width: 48,
-            height: 48,
-            child: _DroneMarkerIcon(drone: d),
+            width: 48 * markerScale,
+            height: 48 * markerScale,
+            child: Transform.scale(
+              scale: markerScale,
+              child: _DroneMarkerIcon(drone: d),
+            ),
           ),
       ],
     );

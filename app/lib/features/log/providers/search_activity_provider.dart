@@ -5,6 +5,7 @@ import '../../../models/drone_state.dart';
 import '../../../services/call_service.dart';
 import '../../control/providers/drones_provider.dart';
 import '../../control/providers/heatmap_provider.dart';
+import '../../control/providers/grid_provider.dart';
 import '../../detection/providers/detection_log_provider.dart';
 import '../models/log_entry.dart';
 import 'call_activity_recorder.dart';
@@ -36,7 +37,7 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
           _append(
             LogActivityKind.areaNeedsRecheck,
             entry.value.droneId ?? _currentDroneId,
-            '재확인 필요 구역 발생 — ${entry.key}',
+            '재확인 필요 — ${_locationLabel(entry.key)}',
             Severity.warning,
           );
         }
@@ -68,7 +69,7 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
           _append(
             LogActivityKind.detectionResolved,
             entry.event.droneId,
-            '$label — 구역 ${entry.event.cellId}',
+            '$label — ${_locationLabel(entry.event.cellId)}',
             entry.status == DetectionStatus.rescued
                 ? Severity.ok
                 : Severity.offline,
@@ -87,12 +88,18 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
     _append(
       LogActivityKind.searchStarted,
       drone.droneId,
-      '수색 시작 — 운용 드론 #${drone.droneId} 연결',
+      '수색 시작 — 드론 #${drone.droneId} 운용 시작',
       Severity.ok,
     );
   }
 
   int get _currentDroneId => ref.read(dronesProvider).keys.firstOrNull ?? 1;
+
+  String _locationLabel(String cellId) => locationLabelForCell(
+    cellId: cellId,
+    labels: ref.read(gridLocationLabelProvider),
+    grid: ref.read(gridDefProvider),
+  );
 
   LogEntry _callLogEntry(CallActivityRecord record) => LogEntry(
     type: LogEntryType.activity,

@@ -5,7 +5,6 @@ import 'package:latlong2/latlong.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
-import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/liquid_page_components.dart';
 import '../../core/widgets/metric_row.dart';
 import '../../core/widgets/severity.dart';
@@ -15,8 +14,6 @@ import '../control/providers/map_focus_provider.dart';
 import '../detection/providers/detection_log_provider.dart';
 import 'models/log_entry.dart';
 import 'providers/combined_log_provider.dart';
-
-enum _LogFilter { all, unresolved }
 
 enum _StatusFilter { pending, rescued, falseAlarm, alert }
 
@@ -28,8 +25,7 @@ String _statusFilterLabel(_StatusFilter f) => switch (f) {
 };
 
 /// 기록 — 수색 활동, 탐지 결과, 장비 경고를 시간순으로 보여주는 화면.
-/// ([combinedLogProvider]/[unresolvedLogProvider]), 세그먼트/필터는 그 위에서
-/// 걸러낼 뿐 별도 상태를 두지 않는다.
+/// [combinedLogProvider]의 기록을 기간·상태·검색어로 필터링한다.
 class LogScreen extends ConsumerStatefulWidget {
   const LogScreen({super.key});
 
@@ -38,7 +34,6 @@ class LogScreen extends ConsumerStatefulWidget {
 }
 
 class _LogScreenState extends ConsumerState<LogScreen> {
-  _LogFilter _filter = _LogFilter.all;
   String _query = '';
   DateTimeRange? _dateRange;
   final Set<_StatusFilter> _selectedStatuses = {};
@@ -83,9 +78,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final base = ref.watch(
-      _filter == _LogFilter.all ? combinedLogProvider : unresolvedLogProvider,
-    );
+    final base = ref.watch(combinedLogProvider);
 
     final filtered = base.where((e) {
       if (_query.isNotEmpty &&
@@ -146,7 +139,6 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                         padding: const EdgeInsets.all(AppSpacing.lg),
                         child: LayoutBuilder(
                           builder: (context, constraints) {
-                            final wide = constraints.maxWidth >= 820;
                             final search = TextField(
                               controller: _searchController,
                               style: Theme.of(context).textTheme.bodyMedium,
@@ -167,40 +159,10 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                               onChanged: (value) =>
                                   setState(() => _query = value),
                             );
-                            final mode = SegmentedButton<_LogFilter>(
-                              segments: const [
-                                ButtonSegment(
-                                  value: _LogFilter.all,
-                                  icon: Icon(Icons.receipt_long_outlined),
-                                  label: Text('전체'),
-                                ),
-                                ButtonSegment(
-                                  value: _LogFilter.unresolved,
-                                  icon: Icon(Icons.priority_high_rounded),
-                                  label: Text('조치 필요'),
-                                ),
-                              ],
-                              selected: {_filter},
-                              onSelectionChanged: (selection) =>
-                                  setState(() => _filter = selection.first),
-                            );
-
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (wide)
-                                  Row(
-                                    children: [
-                                      Expanded(child: search),
-                                      const SizedBox(width: AppSpacing.md),
-                                      mode,
-                                    ],
-                                  )
-                                else ...[
-                                  search,
-                                  const SizedBox(height: AppSpacing.sm),
-                                  SizedBox(width: double.infinity, child: mode),
-                                ],
+                                search,
                                 const SizedBox(height: AppSpacing.md),
                                 Wrap(
                                   spacing: AppSpacing.sm,
@@ -504,10 +466,21 @@ class _LogTile extends StatelessWidget {
   }
 
   void _showDetail(BuildContext context) {
-    AppBottomSheet.show<void>(
+    showDialog<void>(
       context: context,
-      maxHeightFraction: 0.5,
-      builder: (context) => _DetectionDetailSheet(entry: entry),
+      barrierColor: AppColors.navy.withValues(alpha: 0.32),
+      builder: (context) => Dialog(
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(AppSpacing.lg),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520, maxHeight: 620),
+          child: LiquidGlassPanel(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: _DetectionDetailSheet(entry: entry),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -584,7 +557,26 @@ class _DetectionDetailSheet extends ConsumerWidget {
             children: [
               Expanded(
                 child: Text(
-                  '드론 #${event.droneId} · Cell ${event.cellId}',
+                  '탐지 기록 상세',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: AppColors.navy,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: '닫기',
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '드론 #${event.droneId} · ${locationLabelForCell(cellId: event.cellId, labels: ref.watch(gridLocationLabelProvider), grid: ref.watch(gridDefProvider))}',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
