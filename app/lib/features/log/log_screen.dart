@@ -6,6 +6,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
+import '../../core/widgets/liquid_page_components.dart';
 import '../../core/widgets/metric_row.dart';
 import '../../core/widgets/severity.dart';
 import '../../core/widgets/status_chip.dart';
@@ -113,172 +114,216 @@ class _LogScreenState extends ConsumerState<LogScreen> {
       return true;
     }).toList();
 
+    final urgentCount = base
+        .where(
+          (e) =>
+              e.severity == Severity.danger || e.severity == Severity.warning,
+        )
+        .length;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('기록')),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      backgroundColor: const Color(0xFFE8EEF5),
+      body: Stack(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                border: Border.all(color: AppColors.border),
-                borderRadius: BorderRadius.circular(AppRadius.lg),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('조회 조건', style: AppTypography.eyebrow(AppColors.navy)),
-                  const SizedBox(height: AppSpacing.md),
-                  TextField(
-                    controller: _searchController,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                      hintText: '구역 · 활동 검색',
-                      suffixIcon: _query.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: const Icon(Icons.close, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _query = '');
-                              },
-                            ),
-                    ),
-                    onChanged: (v) => setState(() => _query = v),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  SegmentedButton<_LogFilter>(
-                    segments: const [
-                      ButtonSegment(value: _LogFilter.all, label: Text('전체')),
-                      ButtonSegment(
-                        value: _LogFilter.unresolved,
-                        label: Text('조치 필요'),
+          const Positioned.fill(
+            child: LiquidPageBackdrop(startColor: Color(0xFFF4F8FC)),
+          ),
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _LogHeader(
+                  resultCount: filtered.length,
+                  urgentCount: urgentCount,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 14),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1160),
+                      child: LiquidGlassPanel(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(AppSpacing.lg),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final wide = constraints.maxWidth >= 820;
+                            final search = TextField(
+                              controller: _searchController,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                              decoration: InputDecoration(
+                                prefixIcon: const Icon(Icons.search, size: 20),
+                                hintText: '구역 · 드론 · 활동 검색',
+                                suffixIcon: _query.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        icon: const Icon(Icons.close, size: 18),
+                                        tooltip: '검색어 지우기',
+                                        onPressed: () {
+                                          _searchController.clear();
+                                          setState(() => _query = '');
+                                        },
+                                      ),
+                              ),
+                              onChanged: (value) =>
+                                  setState(() => _query = value),
+                            );
+                            final mode = SegmentedButton<_LogFilter>(
+                              segments: const [
+                                ButtonSegment(
+                                  value: _LogFilter.all,
+                                  icon: Icon(Icons.receipt_long_outlined),
+                                  label: Text('전체'),
+                                ),
+                                ButtonSegment(
+                                  value: _LogFilter.unresolved,
+                                  icon: Icon(Icons.priority_high_rounded),
+                                  label: Text('조치 필요'),
+                                ),
+                              ],
+                              selected: {_filter},
+                              onSelectionChanged: (selection) =>
+                                  setState(() => _filter = selection.first),
+                            );
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (wide)
+                                  Row(
+                                    children: [
+                                      Expanded(child: search),
+                                      const SizedBox(width: AppSpacing.md),
+                                      mode,
+                                    ],
+                                  )
+                                else ...[
+                                  search,
+                                  const SizedBox(height: AppSpacing.sm),
+                                  SizedBox(width: double.infinity, child: mode),
+                                ],
+                                const SizedBox(height: AppSpacing.md),
+                                Wrap(
+                                  spacing: AppSpacing.sm,
+                                  runSpacing: AppSpacing.sm,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    _LogFilterChip(
+                                      label: _dateRange == null
+                                          ? '전체 기간'
+                                          : '${_dateRange!.start.month}/${_dateRange!.start.day} ~ '
+                                                '${_dateRange!.end.month}/${_dateRange!.end.day}',
+                                      selected: _dateRange != null,
+                                      onSelected: (_) => _pickDateRange(),
+                                      avatarIcon: Icons.calendar_today_outlined,
+                                      onDeleted: _dateRange == null
+                                          ? null
+                                          : () => setState(
+                                              () => _dateRange = null,
+                                            ),
+                                    ),
+                                    for (final status in _StatusFilter.values)
+                                      _LogFilterChip(
+                                        label: _statusFilterLabel(status),
+                                        selected: _selectedStatuses.contains(
+                                          status,
+                                        ),
+                                        onSelected: (selected) => setState(() {
+                                          if (selected) {
+                                            _selectedStatuses.add(status);
+                                          } else {
+                                            _selectedStatuses.remove(status);
+                                          }
+                                        }),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            );
+                          },
+                        ),
                       ),
-                    ],
-                    selected: {_filter},
-                    onSelectionChanged: (s) =>
-                        setState(() => _filter = s.first),
+                    ),
                   ),
-                  const SizedBox(height: AppSpacing.lg),
-                  const _FilterGroupLabel('날짜'),
-                  const SizedBox(height: AppSpacing.xs),
-                  _LogFilterChip(
-                    label: _dateRange == null
-                        ? '전체 기간'
-                        : '${_dateRange!.start.month}/${_dateRange!.start.day} ~ '
-                              '${_dateRange!.end.month}/${_dateRange!.end.day}',
-                    selected: _dateRange != null,
-                    onSelected: (_) => _pickDateRange(),
-                    avatarIcon: Icons.calendar_today_outlined,
-                    onDeleted: _dateRange == null
-                        ? null
-                        : () => setState(() => _dateRange = null),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  const _FilterGroupLabel('상태'),
-                  const SizedBox(height: AppSpacing.xs),
-                  Wrap(
-                    spacing: AppSpacing.sm,
-                    runSpacing: AppSpacing.sm,
-                    children: [
-                      for (final s in _StatusFilter.values)
-                        _LogFilterChip(
-                          label: _statusFilterLabel(s),
-                          selected: _selectedStatuses.contains(s),
-                          onSelected: (sel) => setState(
-                            () => sel
-                                ? _selectedStatuses.add(s)
-                                : _selectedStatuses.remove(s),
+                ),
+                Expanded(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1160),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                        child: LiquidGlassPanel(
+                          width: double.infinity,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  AppSpacing.lg,
+                                  AppSpacing.lg,
+                                  AppSpacing.lg,
+                                  AppSpacing.sm,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      '수색 활동',
+                                      style: AppTypography.eyebrow(
+                                        AppColors.navy,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      '총 ${filtered.length}건',
+                                      style: AppTypography.eyebrow(
+                                        AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Divider(height: 1),
+                              Expanded(
+                                child: filtered.isEmpty
+                                    ? Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.inbox_outlined,
+                                              size: 32,
+                                              color: AppColors.textSecondary,
+                                            ),
+                                            const SizedBox(
+                                              height: AppSpacing.sm,
+                                            ),
+                                            Text(
+                                              '기록 없음',
+                                              style: Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium,
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    : ListView.separated(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: AppSpacing.lg,
+                                        ),
+                                        itemCount: filtered.length,
+                                        separatorBuilder: (_, _) =>
+                                            const Divider(height: 1),
+                                        itemBuilder: (context, i) =>
+                                            _LogTile(entry: filtered[i]),
+                                      ),
+                              ),
+                            ],
                           ),
                         ),
-                    ],
+                      ),
+                    ),
                   ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
-                0,
-                AppSpacing.lg,
-                AppSpacing.lg,
-              ),
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  border: Border.all(color: AppColors.border),
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.lg,
-                        AppSpacing.lg,
-                        AppSpacing.lg,
-                        AppSpacing.sm,
-                      ),
-                      child: Row(
-                        children: [
-                          Text(
-                            '수색 활동',
-                            style: AppTypography.eyebrow(AppColors.navy),
-                          ),
-                          const Spacer(),
-                          Text(
-                            '총 ${filtered.length}건',
-                            style: AppTypography.eyebrow(
-                              AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    Expanded(
-                      child: filtered.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.inbox_outlined,
-                                    size: 32,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                  const SizedBox(height: AppSpacing.sm),
-                                  Text(
-                                    '기록 없음',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodyMedium,
-                                  ),
-                                ],
-                              ),
-                            )
-                          : ListView.separated(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.lg,
-                              ),
-                              itemCount: filtered.length,
-                              separatorBuilder: (_, _) =>
-                                  const Divider(height: 1),
-                              itemBuilder: (context, i) =>
-                                  _LogTile(entry: filtered[i]),
-                            ),
-                    ),
-                  ],
-                ),
-              ),
+              ],
             ),
           ),
         ],
@@ -287,14 +332,66 @@ class _LogScreenState extends ConsumerState<LogScreen> {
   }
 }
 
-class _FilterGroupLabel extends StatelessWidget {
-  const _FilterGroupLabel(this.text);
-  final String text;
-
+class _LogHeader extends StatelessWidget {
+  const _LogHeader({required this.resultCount, required this.urgentCount});
+  final int resultCount;
+  final int urgentCount;
   @override
-  Widget build(BuildContext context) {
-    return Text(text, style: AppTypography.eyebrow(AppColors.textSecondary));
-  }
+  Widget build(BuildContext context) => NavyPageHeader(
+    title: '기록',
+    trailing: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _HeaderMetric(label: '조회 기록', value: '$resultCount건'),
+        const SizedBox(width: 10),
+        _HeaderMetric(
+          label: '우선 확인',
+          value: '$urgentCount건',
+          alert: urgentCount > 0,
+        ),
+      ],
+    ),
+  );
+}
+
+class _HeaderMetric extends StatelessWidget {
+  const _HeaderMetric({
+    required this.label,
+    required this.value,
+    this.alert = false,
+  });
+  final String label;
+  final String value;
+  final bool alert;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: .1),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: Colors.white.withValues(alpha: .14)),
+    ),
+    child: Row(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: .65),
+            fontSize: 11,
+          ),
+        ),
+        const SizedBox(width: 9),
+        Text(
+          value,
+          style: TextStyle(
+            color: alert ? const Color(0xFFFFC4A8) : Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Selected state is a solid navy fill + white label, not the default
@@ -378,7 +475,7 @@ class _LogTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    _entryTimeLabel(entry),
+                    '드론 ${entry.droneId} · ${_entryTimeLabel(entry)}',
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                 ],
@@ -391,10 +488,13 @@ class _LogTile extends StatelessWidget {
                 label: _detectionStatusLabel(entry.status!),
               ),
               const SizedBox(width: AppSpacing.xs),
-              const Icon(
-                Icons.chevron_right,
-                color: AppColors.textSecondary,
-                size: 20,
+              const Tooltip(
+                message: '상세 확인',
+                child: Icon(
+                  Icons.chevron_right,
+                  color: AppColors.textSecondary,
+                  size: 20,
+                ),
               ),
             ],
           ],

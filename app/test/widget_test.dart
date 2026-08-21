@@ -7,7 +7,7 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: DroneControlApp()));
     await tester.pump();
 
-    expect(find.text('Mission Control'), findsOneWidget);
+    expect(find.text('DROWNING'), findsOneWidget);
 
     // BootScreen의 800ms 스플래시 딜레이 타이머를 다 흘려보내야 테스트 종료 시
     // "pending timer" 어서션에 걸리지 않는다.

@@ -15,7 +15,7 @@ class DroneControlApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Mission Control',
+      title: 'DROWNING',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       home: const BootScreen(),

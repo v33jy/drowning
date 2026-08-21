@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,10 +36,18 @@ class ControlScreen extends ConsumerStatefulWidget {
 }
 
 class _ControlScreenState extends ConsumerState<ControlScreen> {
+  static const _defaultSearchPanelWidth = 440.0;
+  static const _defaultSearchPanelHeight = 640.0;
+  static const _minimumSearchPanelExtent = 320.0;
+  static const _mapOverlayTop = 92.0;
+  static const _mapOverlayVerticalInset = 108.0;
+
   final _mapController = MapController();
   bool _centeredOnFirstDrone = false;
   DetectionEvent? _activeDetection;
   String? _selectedCellId;
+  double _searchPanelWidth = _defaultSearchPanelWidth;
+  double _searchPanelHeight = _defaultSearchPanelHeight;
 
   @override
   void dispose() {
@@ -72,6 +82,54 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     final cellId = findContainingCellId(grid, point);
     if (cellId == null) return;
     setState(() => _selectedCellId = cellId);
+  }
+
+  Widget _buildResizableSearchPanel(
+    BoxConstraints constraints,
+    String selectedCellId,
+  ) {
+    final maxWidth = constraints.maxWidth - AppSpacing.md * 2;
+    final maxHeight = constraints.maxHeight - _mapOverlayVerticalInset;
+    final minWidth = math.min(maxWidth, _minimumSearchPanelExtent);
+    final minHeight = math.min(maxHeight, _minimumSearchPanelExtent);
+    final panelWidth = _searchPanelWidth.clamp(minWidth, maxWidth).toDouble();
+    final panelHeight = _searchPanelHeight
+        .clamp(minHeight, maxHeight)
+        .toDouble();
+    final widthScale = panelWidth / _defaultSearchPanelWidth;
+    final heightScale = panelHeight / _defaultSearchPanelHeight;
+    final textScale = math
+        .max(widthScale, heightScale)
+        .clamp(0.9, 1.3)
+        .toDouble();
+
+    return Positioned(
+      top: _mapOverlayTop,
+      right: AppSpacing.md,
+      width: panelWidth,
+      height: panelHeight,
+      child: FloatingMapPanel(
+        maxHeight: maxHeight,
+        onResize: (details) => setState(() {
+          _searchPanelWidth = (_searchPanelWidth - details.delta.dx)
+              .clamp(minWidth, maxWidth)
+              .toDouble();
+          _searchPanelHeight = (_searchPanelHeight + details.delta.dy)
+              .clamp(minHeight, maxHeight)
+              .toDouble();
+        }),
+        child: MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: LiveSearchAreaDetail(
+            key: ValueKey(selectedCellId),
+            cellId: selectedCellId,
+            onClose: () => setState(() => _selectedCellId = null),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -115,21 +173,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     final locationLabels = ref.watch(gridLocationLabelProvider);
     final gridDefinition = ref.watch(gridDefProvider);
     return Scaffold(
-      body: Column(
+      body: Stack(
         children: [
-          OperationHeader(
-            queueCount: ref.watch(
-              pendingDetectionQueueProvider.select((q) => q.length),
-            ),
-            onQueueTap: () {
-              final queue = ref.read(pendingDetectionQueueProvider);
-              if (queue.isNotEmpty) _openDetectionPanel(queue.last);
-            },
-            onLogTap: () => _openRoute(const LogScreen()),
-            onHelpTap: () => _openRoute(const HelpScreen()),
-            onSettingsTap: () => _openRoute(const SettingsScreen()),
-          ),
-          Expanded(
+          Positioned.fill(
             child: LayoutBuilder(
               builder: (context, constraints) => Stack(
                 children: [
@@ -137,10 +183,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                     child: FlutterMap(
                       mapController: _mapController,
                       options: MapOptions(
-                        initialCenter: const LatLng(
-                          37.5012,
-                          127.0262,
-                        ), // 강남↔신논현 중간
+                        initialCenter: const LatLng(37.5012, 127.0262),
                         initialZoom: 15,
                         interactionOptions: const InteractionOptions(
                           flags: InteractiveFlag.all,
@@ -150,27 +193,35 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                       children: [
                         TileLayer(
                           urlTemplate:
-                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
                           userAgentPackageName: 'com.drone.control_app',
                         ),
                         const HeatmapPainterLayer(),
                         const DroneMarkerLayer(),
+                        RichAttributionWidget(
+                          attributions: [
+                            TextSourceAttribution(
+                              '© OpenStreetMap contributors · © CARTO',
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
                   const Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
+                    top: _mapOverlayTop,
+                    left: 16,
+                    right: 16,
                     child: OfflineBanner(),
                   ),
                   if (activeDetection != null)
                     Positioned(
-                      top: AppSpacing.md,
+                      top: _mapOverlayTop,
                       right: AppSpacing.md,
-                      width: 360,
+                      width: 400,
                       child: DetectionPanelStack(
-                        maxHeight: constraints.maxHeight - AppSpacing.xl,
+                        maxHeight:
+                            constraints.maxHeight - _mapOverlayVerticalInset,
                         activeDetection: activeDetection,
                         pendingDetections: pendingDetections,
                         locationLabels: locationLabels,
@@ -180,20 +231,28 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                       ),
                     ),
                   if (activeDetection == null && selectedCellId != null)
-                    Positioned(
-                      top: AppSpacing.md,
-                      right: AppSpacing.md,
-                      width: 360,
-                      child: FloatingMapPanel(
-                        maxHeight: constraints.maxHeight - AppSpacing.xl,
-                        child: LiveSearchAreaDetail(
-                          key: ValueKey(selectedCellId),
-                          cellId: selectedCellId,
-                          onClose: () => setState(() => _selectedCellId = null),
-                        ),
-                      ),
-                    ),
+                    _buildResizableSearchPanel(constraints, selectedCellId),
                 ],
+              ),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: OperationHeader(
+                queueCount: ref.watch(
+                  pendingDetectionQueueProvider.select((q) => q.length),
+                ),
+                onQueueTap: () {
+                  final queue = ref.read(pendingDetectionQueueProvider);
+                  if (queue.isNotEmpty) _openDetectionPanel(queue.last);
+                },
+                onLogTap: () => _openRoute(const LogScreen()),
+                onHelpTap: () => _openRoute(const HelpScreen()),
+                onSettingsTap: () => _openRoute(const SettingsScreen()),
               ),
             ),
           ),

@@ -10,14 +10,12 @@ class SearchAreaGuidance {
     required this.reason,
     required this.action,
     required this.color,
-    required this.icon,
   });
 
   final String statusLabel;
   final String reason;
   final String action;
   final Color color;
-  final IconData icon;
 
   factory SearchAreaGuidance.fromCell(HeatmapCell cell) {
     final status = _statusPresentation[cell.status]!;
@@ -29,7 +27,6 @@ class SearchAreaGuidance {
       reason: _reasonLabels[reasonCode]!,
       action: status.action,
       color: status.color,
-      icon: status.icon,
     );
   }
 }
@@ -40,14 +37,12 @@ class _StatusPresentation {
     required this.defaultReasonCode,
     required this.action,
     required this.color,
-    required this.icon,
   });
 
   final String label;
   final String defaultReasonCode;
   final String action;
   final Color color;
-  final IconData icon;
 }
 
 const _reasonLabels = <String, String>{
@@ -66,23 +61,20 @@ const _statusPresentation = <SearchAreaStatus, _StatusPresentation>{
   SearchAreaStatus.unscanned: _StatusPresentation(
     label: '미확인',
     defaultReasonCode: 'no_measurements',
-    action: '드론으로 이 구역을 우선 확인하세요.',
+    action: '드론으로 이 구역을 확인하세요.',
     color: AppColors.offline,
-    icon: Icons.help_outline,
   ),
   SearchAreaStatus.scanning: _StatusPresentation(
     label: '확인 중',
     defaultReasonCode: 'insufficient_repeated_signal',
     action: '같은 경로를 유지하며 추가 측정하세요.',
     color: AppColors.primary,
-    icon: Icons.radar,
   ),
   SearchAreaStatus.needsRecheck: _StatusPresentation(
     label: '재확인 필요',
     defaultReasonCode: 'repeated_strong_signal',
     action: '해당 위치를 저고도로 다시 통과하세요.',
     color: AppColors.warning,
-    icon: Icons.warning_amber_outlined,
   ),
 };
 

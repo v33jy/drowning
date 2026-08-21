@@ -17,7 +17,19 @@ class LatLngToCellIdTests(unittest.TestCase):
     def test_grid_definition_includes_responder_facing_landmark(self):
         cell = next(item for item in grid_definition() if item["cell_id"] == "F2")
 
-        self.assertEqual(cell["location_label"], "신논현역 인근")
+        self.assertEqual(cell["location_label"], "교보타워 인근")
+
+    def test_default_grid_has_multiple_non_station_landmarks(self):
+        self.assertEqual(
+            config._load_grid_landmarks(None, True),
+            {"F2": "교보타워 인근", "E5": "국기원 인근"},
+        )
+        self.assertTrue(
+            all(
+                "역 인근" not in label
+                for label in config._load_grid_landmarks(None, True).values()
+            )
+        )
 
     def test_outside_grid_returns_none(self):
         self.assertIsNone(latlng_to_cell_id(config.LAT_MIN - 1, config.LNG_MIN))

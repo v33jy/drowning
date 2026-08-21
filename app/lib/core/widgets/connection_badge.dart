@@ -5,7 +5,7 @@ import 'status_chip.dart';
 
 /// Server WebSocket connection state — distinct from an individual drone
 /// going offline (see [Severity.offline] used per-drone elsewhere).
-enum ConnectionStatus { connecting, connected, disconnected }
+enum ConnectionStatus { connecting, connected, waitingForDrone, disconnected }
 
 /// Presentational only — the screen that hosts this watches whichever
 /// connection provider it wires up and passes the current [status] in.
@@ -18,6 +18,7 @@ class ConnectionBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final (severity, label) = switch (status) {
       ConnectionStatus.connected => (Severity.ok, '연결됨'),
+      ConnectionStatus.waitingForDrone => (Severity.offline, '드론 대기 중'),
       ConnectionStatus.connecting => (Severity.offline, '재연결 중…'),
       ConnectionStatus.disconnected => (Severity.danger, '연결 끊김'),
     };

@@ -54,7 +54,7 @@ String locationLabelForCell({
     targetLng,
   );
   final roundedMeters = (nearest.distance / 10).round() * 10;
-  return '${nearest.name} $direction 약 ${roundedMeters}m';
+  return '${nearest.name} 기준 $direction 약 ${roundedMeters}m';
 }
 
 double _distanceMeters(double lat1, double lng1, double lat2, double lng2) {
