@@ -5,7 +5,6 @@ import 'package:latlong2/latlong.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
-import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/liquid_page_components.dart';
 import '../../core/widgets/metric_row.dart';
 import '../../core/widgets/severity.dart';
@@ -467,10 +466,21 @@ class _LogTile extends StatelessWidget {
   }
 
   void _showDetail(BuildContext context) {
-    AppBottomSheet.show<void>(
+    showDialog<void>(
       context: context,
-      maxHeightFraction: 0.5,
-      builder: (context) => _DetectionDetailSheet(entry: entry),
+      barrierColor: AppColors.navy.withValues(alpha: 0.32),
+      builder: (context) => Dialog(
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(AppSpacing.lg),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520, maxHeight: 620),
+          child: LiquidGlassPanel(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: _DetectionDetailSheet(entry: entry),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -543,6 +553,25 @@ class _DetectionDetailSheet extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '탐지 기록 상세',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: AppColors.navy,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: '닫기',
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
           Row(
             children: [
               Expanded(
