@@ -78,7 +78,12 @@ class DemoFeed {
   static const _targetLat = 37.5044, _targetLng = 127.0248;
   static const _approachSteps = 30;
 
-  static const locationLabels = <String, String>{'F2': '신논현역 인근'};
+  // Keep the offline demo aligned with the server's responder-facing
+  // landmarks. The UI derives every other cell's label from the nearest one.
+  static const locationLabels = <String, String>{
+    'F2': '교보타워 인근',
+    'E5': '국기원 인근',
+  };
 
   static String _cellId(int row, int col) =>
       '${String.fromCharCode(65 + row)}$col';

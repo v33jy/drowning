@@ -120,7 +120,7 @@ class _SplashBody extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
-                'Mission Control',
+                'DROWNING',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.displaySmall,
               ),

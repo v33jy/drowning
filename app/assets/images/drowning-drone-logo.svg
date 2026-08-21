@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">DROWNING drone logo</title>
+  <rect width="512" height="512" rx="112" fill="#052B57"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="36" stroke-linecap="round">
+    <path d="M230 230 138 138M282 230l92-92M230 282l-92 92M282 282l92 92"/>
+    <circle cx="112" cy="112" r="61"/>
+    <circle cx="400" cy="112" r="61"/>
+    <circle cx="112" cy="400" r="61"/>
+    <circle cx="400" cy="400" r="61"/>
+  </g>
+  <rect x="194" y="174" width="124" height="164" rx="46" fill="#FFFFFF"/>
+  <circle cx="256" cy="287" r="20" fill="#052B57"/>
+</svg>

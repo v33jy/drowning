@@ -38,7 +38,16 @@ def _load_grid_landmarks(
 ) -> dict[str, str]:
     if configured_landmarks is not None:
         return json.loads(configured_landmarks)
-    return {"F2": "신논현역 인근"} if uses_default_grid else {}
+    if not uses_default_grid:
+        return {}
+
+    # Keep several visually distinctive field references across the default
+    # operation area.  A single station anchor makes every cell read like a
+    # transit direction and is difficult for responders to place on a map.
+    return {
+        "F2": "교보타워 인근",
+        "E5": "국기원 인근",
+    }
 
 
 GRID_LANDMARKS = _load_grid_landmarks(_configured_landmarks, _uses_default_grid)

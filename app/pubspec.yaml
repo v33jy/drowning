@@ -13,6 +13,7 @@ dependencies:
   latlong2: ^0.9.1             # LatLng type for flutter_map
   web_socket_channel: ^3.0.1   # WebSocket to FastAPI server
   flutter_riverpod: ^2.6.1     # State management
+  flutter_svg: ^2.3.0          # Vector logo rendering
   http: ^1.2.1                 # Initial HTTP calls (grid definition)
   flutter_webrtc: ^1.2.0       # P2P audio call
   permission_handler: ^11.4.0  # Microphone runtime permission
@@ -24,6 +25,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/drowning-drone-logo.svg
   fonts:
     - family: PublicSans
       fonts:

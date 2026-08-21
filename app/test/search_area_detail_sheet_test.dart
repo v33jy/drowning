@@ -1,6 +1,7 @@
 import 'package:control_app/features/control/widgets/search_area_detail_sheet.dart';
 import 'package:control_app/features/control/widgets/search_area_guidance.dart';
 import 'package:control_app/features/control/providers/grid_provider.dart';
+import 'package:control_app/features/control/data/demo_feed.dart';
 import 'package:control_app/models/grid_cell.dart';
 import 'package:control_app/models/heatmap_cell.dart';
 import 'package:control_app/models/video_bookmark.dart';
@@ -30,7 +31,21 @@ void main() {
       },
     );
 
-    expect(label, startsWith('신논현역 동쪽 약'));
+    expect(label, startsWith('신논현역 기준 동쪽 약'));
+  });
+
+  test('uses the landmark label for the cell containing it', () {
+    final label = locationLabelForCell(
+      cellId: 'F2',
+      labels: const {'F2': '교보타워 인근'},
+      grid: const {},
+    );
+
+    expect(label, '교보타워 인근');
+  });
+
+  test('offline demo uses the same non-station landmarks as the server', () {
+    expect(DemoFeed.locationLabels, {'F2': '교보타워 인근', 'E5': '국기원 인근'});
   });
 
   test('maps search status to responder-facing guidance', () {
@@ -90,6 +105,7 @@ void main() {
       );
 
       expect(find.text('수색 구역 정보'), findsNothing);
+      expect(find.text('수색 구역'), findsNothing);
       expect(find.text('위치 정보 없음'), findsOneWidget);
       expect(find.text('재확인 필요'), findsOneWidget);
       expect(find.text('판단 이유'), findsNothing);
@@ -100,6 +116,95 @@ void main() {
       expect(find.textContaining('위치를 확정하지 않습니다'), findsNothing);
     },
   );
+
+  testWidgets('opens the confirmation video in a fullscreen dialog', (
+    tester,
+  ) async {
+    final cell = HeatmapCell(
+      cellId: 'A0',
+      colorHex: '#9E9E9E',
+      status: SearchAreaStatus.unscanned,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SearchAreaDetailSheet(cell: cell)),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('expand-confirmation-video')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.byTooltip('확대 영상 닫기'), findsOneWidget);
+  });
+
+  testWidgets('shows call connection and push-to-talk states', (tester) async {
+    final cell = HeatmapCell(
+      cellId: 'A0',
+      colorHex: '#9E9E9E',
+      status: SearchAreaStatus.unscanned,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SearchAreaDetailSheet(cell: cell)),
+      ),
+    );
+
+    final connect = find.byKey(const Key('connect-survivor-call'));
+    expect(connect, findsOneWidget);
+    expect(find.text('통화 대기'), findsOneWidget);
+    expect(find.text('통화 중'), findsNothing);
+
+    await tester.ensureVisible(connect);
+    await tester.tap(connect);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('연결 중…'), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 1200));
+    expect(find.text('통화 중'), findsOneWidget);
+    expect(find.byKey(const Key('continuous-voice-active')), findsOneWidget);
+    expect(find.text('음성 전달 중'), findsOneWidget);
+    expect(find.byKey(const Key('push-to-talk')), findsNothing);
+
+    await tester.ensureVisible(find.text('눌러서 말하기'));
+    await tester.tap(find.text('눌러서 말하기'));
+    await tester.pump();
+    expect(find.byKey(const Key('push-to-talk')), findsOneWidget);
+    expect(find.byKey(const Key('push-to-talk-hint')), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 2600));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('push-to-talk-hint')), findsNothing);
+
+    await tester.ensureVisible(find.byKey(const Key('push-to-talk')));
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('push-to-talk'))),
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('말하는 중'), findsOneWidget);
+    await gesture.up();
+    await tester.pump();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('push-to-talk')),
+        matching: find.text('눌러서 말하기'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('통화 종료'));
+    await tester.pump();
+    expect(find.text('통화 종료됨'), findsOneWidget);
+    expect(find.byKey(const Key('reconnect-survivor-call')), findsOneWidget);
+    expect(find.text('다시 전화하기'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('reconnect-survivor-call')));
+    await tester.pump();
+    expect(find.text('연결 중…'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1200));
+    expect(find.text('통화 중'), findsOneWidget);
+  });
 
   testWidgets('offline demo does not request stored video', (tester) async {
     await tester.pumpWidget(

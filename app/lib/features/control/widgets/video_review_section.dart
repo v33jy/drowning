@@ -118,15 +118,42 @@ class _VideoReviewCardState extends State<VideoReviewCard> {
     }
     return Column(
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          child: AspectRatio(
-            aspectRatio: 16 / 9,
-            child: Image.network(
-              widget.bookmark.frameUrl(widget.baseUrl, _frameIndex),
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) =>
-                  const Center(child: Text('장면을 표시할 수 없습니다.')),
+        Semantics(
+          button: true,
+          label: '확인 영상 크게 보기',
+          child: GestureDetector(
+            key: const Key('expand-saved-video'),
+            onTap: () => _showExpandedFrame(context),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _buildFrame(BoxFit.cover),
+                    Positioned(
+                      right: 10,
+                      bottom: 10,
+                      child: Container(
+                        padding: const EdgeInsets.all(7),
+                        decoration: BoxDecoration(
+                          color: const Color(0xCC06182C),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.28),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.open_in_full_rounded,
+                          size: 17,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -161,4 +188,45 @@ class _VideoReviewCardState extends State<VideoReviewCard> {
   void _moveFrame(int offset) {
     setState(() => _frameIndex += offset);
   }
+
+  Widget _buildFrame(BoxFit fit) => Image.network(
+    widget.bookmark.frameUrl(widget.baseUrl, _frameIndex),
+    fit: fit,
+    errorBuilder: (_, _, _) => const Center(
+      child: Text('장면을 표시할 수 없습니다.', style: TextStyle(color: Colors.white)),
+    ),
+  );
+
+  Future<void> _showExpandedFrame(BuildContext context) => showDialog<void>(
+    context: context,
+    barrierColor: const Color(0xE6000B18),
+    builder: (dialogContext) => Dialog.fullscreen(
+      backgroundColor: const Color(0xFF07182B),
+      child: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4,
+                  child: _buildFrame(BoxFit.contain),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 12,
+              right: 12,
+              child: IconButton.filledTonal(
+                tooltip: '확대 영상 닫기',
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
