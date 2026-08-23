@@ -4,133 +4,268 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../services/call_service.dart';
-import 'call_controls.dart';
 import 'microphone_input_indicator.dart';
-import 'push_to_talk_button.dart';
 
-class DetectionActions extends ConsumerWidget {
+class DetectionActions extends ConsumerStatefulWidget {
   const DetectionActions({
     required this.callSessionId,
+    required this.onFalseAlarm,
     required this.onRescued,
     super.key,
   });
 
   final String? callSessionId;
+  final VoidCallback onFalseAlarm;
   final VoidCallback onRescued;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final sessionId = callSessionId;
-    final callState = ref.watch(callServiceProvider);
-    final isCurrentCall = callState.sessionId == sessionId;
-    final isActive = isCurrentCall && callState.status == CallStatus.active;
+  ConsumerState<DetectionActions> createState() => _DetectionActionsState();
+}
+
+class _DetectionActionsState extends ConsumerState<DetectionActions> {
+  bool _pushToTalk = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(callServiceProvider);
+    final service = ref.read(callServiceProvider.notifier);
+    final sessionId = widget.callSessionId;
+    final status = state.sessionId == sessionId
+        ? state.status
+        : CallStatus.idle;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (sessionId != null) ...[
-          _CallToolbar(
-            sessionId: sessionId,
-            isActive: isActive,
-            isTransmitting: callState.isTransmitting,
-          ),
-          if (isCurrentCall && callState.status == CallStatus.disconnected) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              callState.message ?? '연결이 끊겼습니다. 다시 시도해 주세요.',
-              style: Theme.of(
-                context,
-              ).textTheme.labelSmall?.copyWith(color: AppColors.danger),
+        Text('요구조자 전화', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: AppSpacing.sm),
+        _CallSurface(
+          child: sessionId == null
+              ? const _StateLabel('통화 연결 정보 없음', AppColors.textSecondary)
+              : _callContent(sessionId, status, state, service),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.danger,
+                ),
+                onPressed: widget.onFalseAlarm,
+                icon: const Icon(Icons.flag_outlined, size: 18),
+                label: const Text('오탐 처리'),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                ),
+                onPressed: widget.onRescued,
+                icon: const Icon(Icons.check, size: 18),
+                label: const Text('구조 완료'),
+              ),
             ),
           ],
-          if (isActive) ...[
-            const SizedBox(height: AppSpacing.xs),
-            MicrophoneInputIndicator(
-              status: callState.microphoneInputStatus,
-              level: callState.microphoneLevel,
-            ),
-          ],
-        ] else
-          const _UnavailableCallToolbar(),
-        _RescueCompleteButton(onPressed: onRescued),
+        ),
       ],
     );
   }
-}
 
-class _UnavailableCallToolbar extends StatelessWidget {
-  const _UnavailableCallToolbar();
-
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 40,
-    decoration: const BoxDecoration(
-      border: Border.symmetric(horizontal: BorderSide(color: AppColors.border)),
-    ),
-  );
-}
-
-class _CallToolbar extends ConsumerWidget {
-  const _CallToolbar({
-    required this.sessionId,
-    required this.isActive,
-    required this.isTransmitting,
-  });
-
-  final String sessionId;
-  final bool isActive;
-  final bool isTransmitting;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) => Container(
-    height: 40,
-    decoration: const BoxDecoration(
-      border: Border.symmetric(horizontal: BorderSide(color: AppColors.border)),
-    ),
-    child: Row(
+  Widget _callContent(
+    String sessionId,
+    CallStatus status,
+    CallState state,
+    CallService service,
+  ) => switch (status) {
+    CallStatus.idle => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(child: CallControls(sessionId: sessionId)),
-        const VerticalDivider(width: 1, indent: 9, endIndent: 9),
-        SizedBox(
-          width: 48,
-          child: Center(
-            child: PushToTalkButton(
-              enabled: isActive,
-              isTransmitting: isTransmitting,
-              onTransmitStart: ref
-                  .read(callServiceProvider.notifier)
-                  .startTransmitting,
-              onTransmitEnd: ref
-                  .read(callServiceProvider.notifier)
-                  .stopTransmitting,
-            ),
+        const _StateLabel('통화 대기', AppColors.textSecondary),
+        const SizedBox(height: AppSpacing.sm),
+        FilledButton(
+          key: const Key('connect-survivor-call'),
+          onPressed: () => service.startCall(sessionId),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.navy,
+            minimumSize: const Size.fromHeight(44),
           ),
+          child: const Text('전화 연결'),
         ),
       ],
     ),
+    CallStatus.connecting || CallStatus.reconnecting => SizedBox(
+      height: 44,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(
+            width: 17,
+            height: 17,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Text(
+            status == CallStatus.reconnecting
+                ? '재연결 ${state.retryAttempt}/3'
+                : '연결 중…',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    ),
+    CallStatus.active => _activeCall(state, service),
+    CallStatus.disconnected => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _StateLabel('통화 종료됨', AppColors.textSecondary),
+        if (state.message != null) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            state.message!,
+            style: const TextStyle(color: AppColors.danger, fontSize: 12),
+          ),
+        ],
+        const SizedBox(height: AppSpacing.sm),
+        OutlinedButton.icon(
+          key: const Key('reconnect-survivor-call'),
+          onPressed: state.requiresMicrophoneSettings
+              ? service.openMicrophoneSettings
+              : service.retryCall,
+          icon: Icon(
+            state.requiresMicrophoneSettings ? Icons.settings : Icons.refresh,
+          ),
+          label: Text(state.requiresMicrophoneSettings ? '권한 설정' : '다시 전화하기'),
+        ),
+      ],
+    ),
+  };
+
+  Widget _activeCall(CallState state, CallService service) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Row(
+        children: [
+          const _StateLabel('통화 중', AppColors.success),
+          const Spacer(),
+          FilledButton.icon(
+            onPressed: service.endCall,
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            icon: const Icon(Icons.call_end_rounded, size: 17),
+            label: const Text('통화 종료'),
+          ),
+        ],
+      ),
+      const SizedBox(height: AppSpacing.sm),
+      SegmentedButton<bool>(
+        key: const Key('voice-mode-selector'),
+        segments: const [
+          ButtonSegment(
+            value: false,
+            label: Text('음성 전달'),
+            icon: Icon(Icons.mic_rounded, size: 17),
+          ),
+          ButtonSegment(
+            value: true,
+            label: Text('눌러서 말하기'),
+            icon: Icon(Icons.touch_app_rounded, size: 17),
+          ),
+        ],
+        selected: {_pushToTalk},
+        onSelectionChanged: (selection) {
+          setState(() => _pushToTalk = selection.first);
+          if (_pushToTalk) {
+            service.stopTransmitting();
+          } else {
+            service.startTransmitting();
+          }
+        },
+        showSelectedIcon: false,
+      ),
+      const SizedBox(height: AppSpacing.sm),
+      if (!_pushToTalk)
+        Container(
+          key: const Key('continuous-voice-active'),
+          height: 48,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.success.withValues(alpha: 0.09),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.success.withValues(alpha: 0.2)),
+          ),
+          child: const Text(
+            '음성 전달 중',
+            style: TextStyle(
+              color: AppColors.success,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        )
+      else
+        GestureDetector(
+          key: const Key('push-to-talk'),
+          onTapDown: (_) => service.startTransmitting(),
+          onTapUp: (_) => service.stopTransmitting(),
+          onTapCancel: service.stopTransmitting,
+          child: Container(
+            height: 54,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: state.isTransmitting ? AppColors.primary : AppColors.navy,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text(
+              state.isTransmitting ? '말하는 중' : '눌러서 말하기',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
+      const SizedBox(height: AppSpacing.xs),
+      MicrophoneInputIndicator(
+        status: state.microphoneInputStatus,
+        level: state.microphoneLevel,
+      ),
+    ],
   );
 }
 
-class _RescueCompleteButton extends StatelessWidget {
-  const _RescueCompleteButton({required this.onPressed});
-
-  final VoidCallback onPressed;
+class _CallSurface extends StatelessWidget {
+  const _CallSurface({required this.child});
+  final Widget child;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
+  Widget build(BuildContext context) => Container(
     width: double.infinity,
-    height: 40,
-    child: TextButton.icon(
-      style: TextButton.styleFrom(
-        minimumSize: const Size.fromHeight(40),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        foregroundColor: AppColors.success,
-        alignment: Alignment.centerLeft,
-        shape: const RoundedRectangleBorder(),
-      ),
-      onPressed: onPressed,
-      icon: const Icon(Icons.check, size: 18),
-      label: const Text('구조 완료'),
+    padding: const EdgeInsets.all(AppSpacing.md),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.62),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppColors.border),
     ),
+    child: child,
+  );
+}
+
+class _StateLabel extends StatelessWidget {
+  const _StateLabel(this.label, this.color);
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+      const SizedBox(width: 7),
+      Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+    ],
   );
 }

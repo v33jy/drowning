@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/widgets/severity.dart';
+import '../../control/providers/grid_provider.dart';
 import '../../detection/providers/detection_log_provider.dart';
 import '../models/log_entry.dart';
 import 'drone_alert_provider.dart';
@@ -12,6 +13,8 @@ final combinedLogProvider = Provider<List<LogEntry>>((ref) {
   final detections = ref.watch(detectionLogProvider);
   final alerts = ref.watch(droneAlertProvider);
   final activities = ref.watch(searchActivityProvider);
+  final locationLabels = ref.watch(gridLocationLabelProvider);
+  final grid = ref.watch(gridDefProvider);
 
   final entries = [
     for (final d in detections)
@@ -21,7 +24,8 @@ final combinedLogProvider = Provider<List<LogEntry>>((ref) {
         timestamp: DateTime.fromMillisecondsSinceEpoch(
           (d.event.timestamp * 1000).round(),
         ),
-        title: '탐지 발생 — 구역 ${d.event.cellId}',
+        title:
+            '탐지 발생 — ${locationLabelForCell(cellId: d.event.cellId, labels: locationLabels, grid: grid)}',
         severity: switch (d.status) {
           DetectionStatus.pending => Severity.warning,
           DetectionStatus.rescued => Severity.ok,

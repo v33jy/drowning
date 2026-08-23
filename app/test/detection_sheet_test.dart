@@ -32,7 +32,8 @@ void main() {
       ),
     );
     await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
   }
 
   Future<void> pumpSheetWithCallState(
@@ -57,22 +58,25 @@ void main() {
       ),
     );
     await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
   }
 
-  testWidgets('구조 완료 버튼과 오탐/최소화 아이콘이 보인다', (tester) async {
+  testWidgets('닫기, 오탐, 구조 완료 처리가 보인다', (tester) async {
     await pumpSheet(tester);
 
+    expect(find.byTooltip('닫기'), findsOneWidget);
+    expect(find.text('오탐 처리'), findsOneWidget);
     expect(find.text('구조 완료'), findsOneWidget);
-    expect(find.text('음성 연결'), findsOneWidget);
-    expect(find.byIcon(Icons.flag_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.remove_circle_outline), findsOneWidget);
+    expect(find.text('전화 연결'), findsOneWidget);
   });
 
   testWidgets('오탐 처리는 확인 다이얼로그 없이 바로 처리되지 않는다', (tester) async {
     await pumpSheet(tester);
 
-    await tester.tap(find.byIcon(Icons.flag_outlined));
+    await tester.ensureVisible(find.text('오탐 처리'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('오탐 처리'));
     await tester.pumpAndSettle();
 
     expect(find.text('오탐으로 처리할까요?'), findsOneWidget);
@@ -80,7 +84,7 @@ void main() {
     expect(find.text('구조 완료'), findsOneWidget);
   });
 
-  testWidgets('최소화는 시트를 닫되 큐에서 제거하지 않는다', (tester) async {
+  testWidgets('닫기는 시트를 닫되 큐에서 제거하지 않는다', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
@@ -103,7 +107,7 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.remove_circle_outline));
+    await tester.tap(find.byTooltip('닫기'));
     await tester.pumpAndSettle();
 
     expect(find.text('outcome:minimized'), findsOneWidget);
@@ -162,7 +166,7 @@ void main() {
       ),
     );
 
-    expect(find.text('다시 연결'), findsOneWidget);
+    expect(find.text('다시 전화하기'), findsOneWidget);
     expect(find.textContaining('다시 시도해 주세요'), findsOneWidget);
   });
 

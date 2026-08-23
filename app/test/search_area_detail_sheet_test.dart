@@ -85,6 +85,22 @@ void main() {
     );
   });
 
+  test('shows saved video age only for the last 24 hours', () {
+    final now = DateTime.utc(2026, 8, 22, 12);
+    expect(
+      formatSavedVideoAge(now.subtract(const Duration(minutes: 12)), now: now),
+      '12분 전',
+    );
+    expect(
+      formatSavedVideoAge(now.subtract(const Duration(hours: 3)), now: now),
+      '3시간 전',
+    );
+    expect(
+      formatSavedVideoAge(now.subtract(const Duration(days: 1)), now: now),
+      isNull,
+    );
+  });
+
   testWidgets(
     'shows operational guidance without internal measurement counts',
     (tester) async {
@@ -124,6 +140,7 @@ void main() {
       cellId: 'A0',
       colorHex: '#9E9E9E',
       status: SearchAreaStatus.unscanned,
+      lastUpdated: DateTime.now().toUtc(),
     );
 
     await tester.pumpWidget(
@@ -139,7 +156,9 @@ void main() {
     expect(find.byTooltip('확대 영상 닫기'), findsOneWidget);
   });
 
-  testWidgets('shows call connection and push-to-talk states', (tester) async {
+  testWidgets('does not show survivor call controls in a cell detail', (
+    tester,
+  ) async {
     final cell = HeatmapCell(
       cellId: 'A0',
       colorHex: '#9E9E9E',
@@ -152,58 +171,8 @@ void main() {
       ),
     );
 
-    final connect = find.byKey(const Key('connect-survivor-call'));
-    expect(connect, findsOneWidget);
-    expect(find.text('통화 대기'), findsOneWidget);
-    expect(find.text('통화 중'), findsNothing);
-
-    await tester.ensureVisible(connect);
-    await tester.tap(connect);
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('연결 중…'), findsOneWidget);
-
-    await tester.pump(const Duration(milliseconds: 1200));
-    expect(find.text('통화 중'), findsOneWidget);
-    expect(find.byKey(const Key('continuous-voice-active')), findsOneWidget);
-    expect(find.text('음성 전달 중'), findsOneWidget);
-    expect(find.byKey(const Key('push-to-talk')), findsNothing);
-
-    await tester.ensureVisible(find.text('눌러서 말하기'));
-    await tester.tap(find.text('눌러서 말하기'));
-    await tester.pump();
-    expect(find.byKey(const Key('push-to-talk')), findsOneWidget);
-    expect(find.byKey(const Key('push-to-talk-hint')), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 2600));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('push-to-talk-hint')), findsNothing);
-
-    await tester.ensureVisible(find.byKey(const Key('push-to-talk')));
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.byKey(const Key('push-to-talk'))),
-    );
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('말하는 중'), findsOneWidget);
-    await gesture.up();
-    await tester.pump();
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('push-to-talk')),
-        matching: find.text('눌러서 말하기'),
-      ),
-      findsOneWidget,
-    );
-
-    await tester.tap(find.text('통화 종료'));
-    await tester.pump();
-    expect(find.text('통화 종료됨'), findsOneWidget);
-    expect(find.byKey(const Key('reconnect-survivor-call')), findsOneWidget);
-    expect(find.text('다시 전화하기'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('reconnect-survivor-call')));
-    await tester.pump();
-    expect(find.text('연결 중…'), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 1200));
-    expect(find.text('통화 중'), findsOneWidget);
+    expect(find.text('요구조자 전화'), findsNothing);
+    expect(find.byKey(const Key('connect-survivor-call')), findsNothing);
   });
 
   testWidgets('offline demo does not request stored video', (tester) async {
@@ -217,7 +186,7 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('데모 모드'), findsOneWidget);
+    expect(find.textContaining('데모 모드'), findsNothing);
     expect(find.byType(LinearProgressIndicator), findsNothing);
   });
 

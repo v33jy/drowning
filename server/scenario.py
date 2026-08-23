@@ -36,7 +36,8 @@ TARGET_LAT = 37.5044
 TARGET_LNG = 127.0248
 
 DRONE_ID   = int(os.environ.get("DRONE_ID", "1"))
-STEPS      = 30          # 이동 단계 수 (~30초)
+STEPS      = 30          # 이동 단계 수
+STEP_INTERVAL = 0.3      # 단계당 대기 시간(초) — 총 이동 시간 ~STEPS*STEP_INTERVAL초
 ALTITUDE   = 50.0
 
 
@@ -53,7 +54,7 @@ async def run() -> None:
         cell_id = await _telemetry(client, START_LAT, START_LNG, 100)
         await _signal(client, -40.0)
         print("[출발] 강남역 — 드론 이륙")
-        await asyncio.sleep(1)
+        await asyncio.sleep(STEP_INTERVAL)
 
         # ── Phase 2: 신논현역 6번 출구로 이동 ────────────────────────────
         for step in range(1, STEPS + 1):
@@ -71,7 +72,7 @@ async def run() -> None:
 
             bar = "█" * int(t * 25) + "░" * (25 - int(t * 25))
             print(f"[{step:02d}/{STEPS}] {bar}  RSS {rss_dbm:6.1f} dBm  bat {int(bat)}%")
-            await asyncio.sleep(1)
+            await asyncio.sleep(STEP_INTERVAL)
 
         # ── Phase 3: 탐지 이벤트 ─────────────────────────────────────────
         print()

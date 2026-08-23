@@ -20,7 +20,7 @@ class VideoReviewSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (demoMode) {
-      return const Text('데모 모드에서는 저장된 영상을 제공하지 않습니다.');
+      return const SizedBox.shrink();
     }
     final bookmarks = ref.watch(videoBookmarksProvider(cellId));
     return bookmarks.when(
