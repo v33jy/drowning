@@ -3,11 +3,11 @@ Disaster Drone Control — FastAPI server
 ========================================
 Entry point.  Run with:
 
-    uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 
 Ports
 -----
-  8000 TCP  — HTTP REST + WebSocket (FastAPI / uvicorn)
+  8001 TCP  — HTTP REST + WebSocket (FastAPI / uvicorn)
 
 WebSocket message types sent to the Android app
 ------------------------------------------------

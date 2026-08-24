@@ -7,7 +7,7 @@ void main() {
   test('로컬 signaling URL을 만든다', () {
     expect(
       ServerConfig.ws('/survivors/listen'),
-      'ws://localhost:8000/survivors/listen',
+      'ws://localhost:8001/survivors/listen',
     );
   });
 
@@ -76,6 +76,37 @@ void main() {
       find.widgetWithText(FilledButton, '통화 종료'),
     );
     expect(button.onPressed, isNotNull);
+    controller.dispose();
+  });
+
+  test('일반 통화가 기본이며 PTT 송신과 분리된다', () {
+    final controller = SurvivorCallController()..phase = CallPhase.active;
+
+    expect(controller.audioMode, AudioMode.call);
+    controller.startTransmitting();
+    expect(controller.isTransmitting, isFalse);
+
+    controller.setAudioMode(AudioMode.pushToTalk);
+    controller.startTransmitting();
+    expect(controller.isTransmitting, isTrue);
+
+    controller.stopTransmitting();
+    controller.dispose();
+  });
+
+  testWidgets('통화 화면에서 통화하기와 눌러서 말하기를 전환한다', (tester) async {
+    final controller = SurvivorCallController()..phase = CallPhase.active;
+    await tester.pumpWidget(
+      MaterialApp(home: CallScreen(controller: controller, autoStart: false)),
+    );
+
+    expect(find.text('마이크 음소거'), findsOneWidget);
+    expect(find.text('길게 눌러 말하기'), findsNothing);
+
+    await tester.tap(find.text('눌러서 말하기'));
+    await tester.pump();
+    expect(find.text('길게 눌러 말하기'), findsOneWidget);
+
     controller.dispose();
   });
 }

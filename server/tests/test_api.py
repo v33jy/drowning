@@ -268,16 +268,31 @@ class CallWebSocketTests(ApiTestCase):
             with self.client.websocket_connect("/calls/missing/control"):
                 pass
 
-    def test_detection_notifies_waiting_survivor(self):
+    def test_control_call_notifies_waiting_survivor(self):
         event = {"drone_id": 1, "cell_id": "A0", "rss_dbm": -55.0}
 
         with self.client.websocket_connect("/survivors/listen") as survivor_ws:
             response = self.client.post("/detection", json=event)
-            message = survivor_ws.receive_json()
+            session_id = state.detections[-1]["call_session_id"]
+            with self.client.websocket_connect(
+                f"/calls/{session_id}/control"
+            ):
+                message = survivor_ws.receive_json()
 
         self.assertEqual(message["type"], "incoming_call")
         self.assertEqual(response.status_code, 200)
-        self.assertIn(message["session_id"], state.call_sessions)
+        self.assertEqual(message["session_id"], session_id)
+        self.assertIn(session_id, state.call_sessions)
+
+    def test_late_survivor_listener_receives_pending_control_call(self):
+        self._session()
+
+        with self.client.websocket_connect("/calls/call-1/control"):
+            with self.client.websocket_connect("/survivors/listen") as survivor_ws:
+                self.assertEqual(
+                    survivor_ws.receive_json(),
+                    {"type": "incoming_call", "session_id": "call-1"},
+                )
 
     def test_relays_signaling_message_unchanged(self):
         self._session()
@@ -299,6 +314,18 @@ class CallWebSocketTests(ApiTestCase):
                 self.assertEqual(survivor_ws.receive_json(), {"type": "call-end"})
 
         self.assertFalse(session.active)
+
+    def test_unexpected_disconnect_notifies_remaining_peer(self):
+        self._session()
+
+        with self.client.websocket_connect("/calls/call-1/control") as control_ws:
+            with self.client.websocket_connect("/calls/call-1/survivor") as survivor_ws:
+                self.assertEqual(control_ws.receive_json(), {"type": "peer-ready"})
+
+            self.assertEqual(
+                control_ws.receive_json(),
+                {"type": "peer-disconnected"},
+            )
 
 
 if __name__ == "__main__":

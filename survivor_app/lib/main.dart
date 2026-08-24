@@ -6,7 +6,11 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'call_models.dart';
+import 'call_screen_widgets.dart';
 import 'push_to_talk_button.dart';
+
+export 'call_models.dart';
 
 void main() => runApp(const SurvivorApp());
 
@@ -15,13 +19,11 @@ class ServerConfig {
     'SERVER_HOST',
     defaultValue: 'localhost',
   );
-  static const port = int.fromEnvironment('HTTP_PORT', defaultValue: 8000);
+  static const port = int.fromEnvironment('HTTP_PORT', defaultValue: 8001);
 
   static String ws(String path) =>
       port == 443 ? 'wss://$host$path' : 'ws://$host:$port$path';
 }
-
-enum CallPhase { waiting, connecting, active, reconnecting, disconnected }
 
 class SurvivorCallController extends ChangeNotifier {
   SurvivorCallController({
@@ -30,6 +32,8 @@ class SurvivorCallController extends ChangeNotifier {
 
   final Duration connectionAttemptTimeout;
   CallPhase phase = CallPhase.waiting;
+  AudioMode audioMode = AudioMode.call;
+  bool isMuted = false;
   bool isTransmitting = false;
 
   WebSocketChannel? _listener;
@@ -156,6 +160,7 @@ class SurvivorCallController extends ChangeNotifier {
           _callConnectionAttemptTimer?.cancel();
           _retryAttempt = 0;
           phase = CallPhase.active;
+          _applyAudioMode();
           notifyListeners();
         } else if (connectionState ==
                 RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
@@ -245,6 +250,11 @@ class SurvivorCallController extends ChangeNotifier {
         }
       case 'call-end':
         await endCall(notifyPeer: false);
+      case 'peer-disconnected':
+        final sessionId = _sessionId;
+        if (sessionId != null) {
+          await _handleCallFailure(sessionId, _connectionGeneration);
+        }
     }
   }
 
@@ -253,7 +263,11 @@ class SurvivorCallController extends ChangeNotifier {
   }
 
   void startTransmitting() {
-    if (_disposed || phase != CallPhase.active) return;
+    if (_disposed ||
+        phase != CallPhase.active ||
+        audioMode != AudioMode.pushToTalk) {
+      return;
+    }
     _setMicrophoneEnabled(true);
     isTransmitting = true;
     notifyListeners();
@@ -264,6 +278,29 @@ class SurvivorCallController extends ChangeNotifier {
     _setMicrophoneEnabled(false);
     isTransmitting = false;
     notifyListeners();
+  }
+
+  void setAudioMode(AudioMode mode) {
+    if (_disposed || audioMode == mode) return;
+    isTransmitting = false;
+    audioMode = mode;
+    _applyAudioMode();
+    notifyListeners();
+  }
+
+  void toggleMute() {
+    if (_disposed || phase != CallPhase.active || audioMode != AudioMode.call) {
+      return;
+    }
+    isMuted = !isMuted;
+    _setMicrophoneEnabled(!isMuted);
+    notifyListeners();
+  }
+
+  void _applyAudioMode() {
+    _setMicrophoneEnabled(
+      phase == CallPhase.active && audioMode == AudioMode.call && !isMuted,
+    );
   }
 
   void _setMicrophoneEnabled(bool enabled) {
@@ -330,18 +367,44 @@ class SurvivorCallController extends ChangeNotifier {
   }
 }
 
-class SurvivorApp extends StatelessWidget {
+class SurvivorApp extends StatefulWidget {
   const SurvivorApp({super.key});
+
+  @override
+  State<SurvivorApp> createState() => _SurvivorAppState();
+}
+
+class _SurvivorAppState extends State<SurvivorApp> {
+  bool _showSplash = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _showSplash = false);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: '요구조자 통화',
       theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF0B50D0),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF164194),
+          brightness: Brightness.light,
+        ),
+        scaffoldBackgroundColor: const Color(0xFFEAF3FF),
+        fontFamilyFallback: const ['Pretendard', 'Noto Sans KR', 'sans-serif'],
         useMaterial3: true,
       ),
-      home: const CallScreen(),
+      home: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 260),
+        child: _showSplash
+            ? const BrandSplashScreen(key: ValueKey('brand-splash'))
+            : const CallScreen(key: ValueKey('call-screen')),
+      ),
     );
   }
 }
@@ -381,72 +444,124 @@ class _CallScreenState extends State<CallScreen> {
       builder: (context, _) {
         final inCall = controller.phase != CallPhase.waiting;
         return Scaffold(
-          body: SafeArea(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(inCall ? Icons.call : Icons.wifi_calling_3, size: 88),
-                    const SizedBox(height: 24),
-                    Text(switch (controller.phase) {
-                      CallPhase.waiting => '통화 대기 중',
-                      CallPhase.connecting => '통화 연결 중',
-                      CallPhase.active => '통화 중',
-                      CallPhase.reconnecting => '통화 재연결 중',
-                      CallPhase.disconnected => '통화 연결 끊김',
-                    }, style: Theme.of(context).textTheme.headlineMedium),
-                    if (controller.phase == CallPhase.reconnecting) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        '자동 재연결 ${controller.retryAttempt}/'
-                        '${SurvivorCallController.maxReconnectAttempts}',
+          body: Stack(
+            children: [
+              const Positioned.fill(child: LiquidBackground()),
+              SafeArea(
+                child: LayoutBuilder(
+                  builder: (context, constraints) => SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight:
+                            constraints.hasBoundedHeight &&
+                                constraints.maxHeight > 36
+                            ? constraints.maxHeight - 36
+                            : 0,
                       ),
-                    ],
-                    if (inCall) ...[
-                      if (controller.phase == CallPhase.active) ...[
-                        const SizedBox(height: 40),
-                        SurvivorPushToTalkButton(
-                          isTransmitting: controller.isTransmitting,
-                          onTransmitStart: controller.startTransmitting,
-                          onTransmitEnd: controller.stopTransmitting,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          controller.isTransmitting
-                              ? '목소리를 전송하고 있습니다'
-                              : '평소에는 마이크가 꺼져 있습니다',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ],
-                      const SizedBox(height: 48),
-                      FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor:
-                              controller.phase == CallPhase.disconnected
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.error,
-                        ),
-                        onPressed: controller.phase == CallPhase.disconnected
-                            ? controller.retryCall
-                            : controller.endCall,
-                        icon: Icon(
-                          controller.phase == CallPhase.disconnected
-                              ? Icons.refresh
-                              : Icons.call_end,
-                        ),
-                        label: Text(
-                          controller.phase == CallPhase.disconnected
-                              ? '다시 연결'
-                              : '통화 종료',
+                      child: IntrinsicHeight(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const AppBrandHeader(),
+                            const Spacer(),
+                            CallStatusCard(
+                              phase: controller.phase,
+                              retryAttempt: controller.retryAttempt,
+                              maxReconnectAttempts:
+                                  SurvivorCallController.maxReconnectAttempts,
+                            ),
+                            const SizedBox(height: 16),
+                            if (controller.phase == CallPhase.active)
+                              GlassPanel(
+                                padding: const EdgeInsets.fromLTRB(
+                                  18,
+                                  22,
+                                  18,
+                                  18,
+                                ),
+                                child: Column(
+                                  children: [
+                                    AudioModeSelector(
+                                      mode: controller.audioMode,
+                                      onChanged: controller.setAudioMode,
+                                    ),
+                                    const SizedBox(height: 18),
+                                    if (controller.audioMode == AudioMode.call)
+                                      NormalCallControl(
+                                        isMuted: controller.isMuted,
+                                        onToggleMute: controller.toggleMute,
+                                      )
+                                    else ...[
+                                      SurvivorPushToTalkButton(
+                                        isTransmitting:
+                                            controller.isTransmitting,
+                                        onTransmitStart:
+                                            controller.startTransmitting,
+                                        onTransmitEnd:
+                                            controller.stopTransmitting,
+                                      ),
+                                      const SizedBox(height: 14),
+                                      Text(
+                                        controller.isTransmitting
+                                            ? '목소리를 구조대에 전송하고 있습니다'
+                                            : '버튼을 누르는 동안만 마이크가 켜집니다',
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: Color(0xFF405571),
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              )
+                            else
+                              const SafetyGuideCard(),
+                            const SizedBox(height: 16),
+                            if (inCall)
+                              FilledButton.icon(
+                                style: FilledButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(56),
+                                  backgroundColor:
+                                      controller.phase == CallPhase.disconnected
+                                      ? const Color(0xFF164194)
+                                      : const Color(0xFFD83A4A),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  elevation: 0,
+                                ),
+                                onPressed:
+                                    controller.phase == CallPhase.disconnected
+                                    ? controller.retryCall
+                                    : controller.endCall,
+                                icon: Icon(
+                                  controller.phase == CallPhase.disconnected
+                                      ? Icons.refresh_rounded
+                                      : Icons.call_end_rounded,
+                                ),
+                                label: Text(
+                                  controller.phase == CallPhase.disconnected
+                                      ? '다시 연결'
+                                      : '통화 종료',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            const Spacer(flex: 2),
+                          ],
                         ),
                       ),
-                    ],
-                  ],
+                    ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
         );
       },

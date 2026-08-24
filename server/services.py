@@ -160,15 +160,6 @@ async def report_detection(event: DetectionEvent, default_stream_url: str) -> di
             cell_id=event.cell_id,
             created_at=time.time(),
         )
-        survivor_ws = state.survivor_waiting[0] if state.survivor_waiting else None
 
     await state.manager.broadcast(WsMessage.detection(entry))
-    if survivor_ws is not None:
-        try:
-            await survivor_ws.send_json(
-                {"type": "incoming_call", "session_id": call_session_id}
-            )
-        except RuntimeError:
-            if survivor_ws in state.survivor_waiting:
-                state.survivor_waiting.remove(survivor_ws)
     return entry

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="72dp"
+        android:height="72dp"
+        android:bottom="32dp"
+        android:drawable="@drawable/ic_launcher"
+        android:gravity="center" />
+    <item
+        android:width="112dp"
+        android:height="20dp"
+        android:top="92dp"
+        android:drawable="@drawable/splash_wordmark"
+        android:gravity="center" />
+</layer-list>
