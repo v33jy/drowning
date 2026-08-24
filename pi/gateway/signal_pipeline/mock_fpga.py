@@ -89,6 +89,9 @@ class MockFpgaTransport:
         noise_floor = noise_sum / fft_size
 
         detected = target_power > noise_floor * (2 ** self.detect_shift)
+        camera_arm = target_power > noise_floor * (
+            2 ** max(0, self.detect_shift - 2)
+        )
 
         # bin 0(DC)은 RTL도 피크 후보에서 제외함
         peak_bin = max(
@@ -117,6 +120,7 @@ class MockFpgaTransport:
             noise_floor=noise_floor,
             rss_dbm=rss_dbm,
             detected=detected,
+            camera_arm=camera_arm,
         )
 
     @staticmethod

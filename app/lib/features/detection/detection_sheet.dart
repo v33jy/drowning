@@ -5,10 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
-import '../../core/widgets/video_thumbnail.dart';
+import '../../core/widgets/webrtc_video_view.dart';
 import '../../models/detection_event.dart';
 import '../../services/call_service.dart';
-import '../control/providers/video_frame_provider.dart';
 import '../control/providers/grid_provider.dart';
 import '../control/widgets/search_panel_components.dart';
 import 'detection_actions.dart';
@@ -120,9 +119,6 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
       grid: ref.watch(gridDefProvider),
     );
     final elapsed = _elapsedLabel(event.timestamp);
-    final frameB64 = ref.watch(
-      videoFrameProvider.select((m) => m[event.droneId]),
-    );
     final videoHeight = math.min(
       340.0,
       MediaQuery.sizeOf(context).height * 0.46,
@@ -158,7 +154,7 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
           const SizedBox(height: AppSpacing.lg),
           Text('현장 영상', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: AppSpacing.sm),
-          VideoThumbnail(frameB64: frameB64, height: videoHeight),
+          WebRtcVideoView(whepUrl: event.streamUrl, height: videoHeight),
           const SizedBox(height: AppSpacing.md),
           DetectionActions(
             callSessionId: event.callSessionId,

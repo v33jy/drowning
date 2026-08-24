@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../config.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../models/heatmap_cell.dart';
@@ -12,7 +11,6 @@ import '../providers/heatmap_provider.dart';
 import '../providers/grid_provider.dart';
 import 'search_area_guidance.dart';
 import 'search_panel_components.dart';
-import 'video_review_section.dart';
 
 class LiveSearchAreaDetail extends ConsumerWidget {
   const LiveSearchAreaDetail({
@@ -40,7 +38,6 @@ class LiveSearchAreaDetail extends ConsumerWidget {
       cell: cell,
       locationLabel: locationLabel,
       onClose: onClose,
-      videoReview: VideoReviewSection(cellId: cellId),
     );
   }
 }
@@ -50,19 +47,16 @@ class SearchAreaDetailSheet extends StatelessWidget {
     required this.cell,
     this.locationLabel = '위치 정보 없음',
     this.onClose,
-    this.videoReview,
     super.key,
   });
 
   final HeatmapCell cell;
   final String locationLabel;
   final VoidCallback? onClose;
-  final Widget? videoReview;
 
   @override
   Widget build(BuildContext context) {
     final guidance = SearchAreaGuidance.fromCell(cell);
-    final capturedAgo = formatSavedVideoAge(cell.lastUpdated);
 
     return SingleChildScrollView(
       child: Column(
@@ -96,44 +90,10 @@ class SearchAreaDetailSheet extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           SearchActionSummary(action: guidance.action, reason: guidance.reason),
           const SizedBox(height: AppSpacing.md),
-          if (capturedAgo != null) ...[
-            const _SectionLabel('저장된 영상'),
-            const SizedBox(height: AppSpacing.sm),
-            _SectionSurface(
-              padding: EdgeInsets.zero,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const _MockLiveVideo(),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 9, 12, 11),
-                    child: Text(
-                      '$capturedAgo 촬영',
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                  ),
-                  if (videoReview != null && !Config.demoMode)
-                    Padding(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      child: videoReview,
-                    ),
-                ],
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
-}
-
-String? formatSavedVideoAge(DateTime? timestamp, {DateTime? now}) {
-  if (timestamp == null) return null;
-  final elapsed = (now ?? DateTime.now()).toUtc().difference(timestamp.toUtc());
-  if (elapsed.isNegative || elapsed.inMinutes < 1) return '방금 전';
-  if (elapsed.inHours < 1) return '${elapsed.inMinutes}분 전';
-  if (elapsed.inHours < 24) return '${elapsed.inHours}시간 전';
-  return null;
 }
 
 enum _DemoCallState { idle, connecting, connected, ended }
@@ -561,105 +521,19 @@ class _SectionLabel extends StatelessWidget {
 }
 
 class _SectionSurface extends StatelessWidget {
-  const _SectionSurface({required this.child, this.padding});
+  const _SectionSurface({required this.child});
 
   final Widget child;
-  final EdgeInsetsGeometry? padding;
 
   @override
   Widget build(BuildContext context) => Container(
     width: double.infinity,
-    padding: padding ?? const EdgeInsets.all(AppSpacing.md),
+    padding: const EdgeInsets.all(AppSpacing.md),
     decoration: BoxDecoration(
       color: Colors.white.withValues(alpha: 0.48),
       borderRadius: BorderRadius.circular(12),
       border: Border.all(color: AppColors.navy.withValues(alpha: 0.09)),
     ),
     child: child,
-  );
-}
-
-class _MockLiveVideo extends StatelessWidget {
-  const _MockLiveVideo({this.canExpand = true});
-
-  final bool canExpand;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    button: canExpand,
-    label: canExpand ? '확인 영상 크게 보기' : '확대된 확인 영상',
-    child: GestureDetector(
-      key: canExpand ? const Key('expand-confirmation-video') : null,
-      onTap: canExpand ? () => _showExpandedVideo(context) : null,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(11),
-        child: AspectRatio(
-          aspectRatio: 16 / 9,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0xFF19324D), Color(0xFF07182B)],
-                  ),
-                ),
-              ),
-              if (canExpand)
-                Positioned(
-                  right: 10,
-                  bottom: 10,
-                  child: Container(
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                      color: const Color(0xCC06182C),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.28),
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.open_in_full_rounded,
-                      size: 17,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-
-  Future<void> _showExpandedVideo(BuildContext context) => showDialog<void>(
-    context: context,
-    barrierColor: const Color(0xE6000B18),
-    builder: (dialogContext) => Dialog.fullscreen(
-      backgroundColor: const Color(0xFF07182B),
-      child: SafeArea(
-        child: Stack(
-          children: [
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: const _MockLiveVideo(canExpand: false),
-              ),
-            ),
-            Positioned(
-              top: 12,
-              right: 12,
-              child: IconButton.filledTonal(
-                tooltip: '확대 영상 닫기',
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                icon: const Icon(Icons.close_rounded),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
   );
 }

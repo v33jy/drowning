@@ -42,9 +42,14 @@ class WsClient {
 
   final _statusController = StreamController<ConnectionStatus>.broadcast();
   final _messageController = StreamController<WsMessage>.broadcast();
+  WsMessage? _lastInitMessage;
 
   Stream<ConnectionStatus> get statusStream => _statusController.stream;
-  Stream<WsMessage> get messageStream => _messageController.stream;
+  Stream<WsMessage> get messageStream async* {
+    final init = _lastInitMessage;
+    if (init != null) yield init;
+    yield* _messageController.stream;
+  }
 
   void _setStatus(ConnectionStatus s) {
     _status = s;
@@ -96,16 +101,21 @@ class WsClient {
   /// only way to reach the providers, since [_messageController] is private.
   void emitDemo(String type, dynamic data) {
     if (_disposed) return;
-    _messageController.add(WsMessage(type, data));
+    _publish(WsMessage(type, data));
   }
 
   void _onRaw(dynamic raw) {
     try {
       final msg = jsonDecode(raw as String) as Map<String, dynamic>;
-      _messageController.add(WsMessage(msg['type'] as String, msg['data']));
+      _publish(WsMessage(msg['type'] as String, msg['data']));
     } catch (_) {
       // Malformed message discarded — don't tear down the connection over it.
     }
+  }
+
+  void _publish(WsMessage message) {
+    if (message.type == 'init') _lastInitMessage = message;
+    _messageController.add(message);
   }
 
   void _scheduleReconnect() {

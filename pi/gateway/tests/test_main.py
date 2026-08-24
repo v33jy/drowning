@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import main as gateway_main
 from config import settings
 from flight_controller import FlightTelemetry
-from measurement import SignalMeasurement
+from measurement import SignalMeasurement, SignalObservation
 
 
 class InputModeTests(unittest.TestCase):
@@ -24,15 +24,6 @@ class InputModeTests(unittest.TestCase):
             self.assertIs(
                 gateway_main.get_measurement_source(),
                 expected,
-            )
-
-    def test_signal_pipeline_uses_rss_detection_fallback(self) -> None:
-        with (
-            patch.object(settings, "input_mode", "signal_pipeline"),
-            patch.object(settings, "detection_mode", "fpga"),
-        ):
-            self.assertTrue(
-                gateway_main.uses_rss_detection()
             )
 
     def test_main_combines_signal_packet_with_mavlink_telemetry(self) -> None:
@@ -103,6 +94,53 @@ class InputModeTests(unittest.TestCase):
             altitude=50.0,
             measured_at=123.0,
         )
+
+
+class DetectionCooldownTests(unittest.TestCase):
+    def test_allows_requested_detection_after_cooldown(self) -> None:
+        cooldown = gateway_main.DetectionCooldown(cooldown_sec=20)
+
+        self.assertTrue(cooldown.allow(1, True, now=100))
+        self.assertFalse(cooldown.allow(1, True, now=119))
+        self.assertTrue(cooldown.allow(1, True, now=120))
+
+    def test_does_not_consume_cooldown_for_inactive_signal(self) -> None:
+        cooldown = gateway_main.DetectionCooldown(cooldown_sec=20)
+
+        self.assertFalse(cooldown.allow(1, False, now=100))
+        self.assertTrue(cooldown.allow(1, True, now=101))
+
+
+class DetectionPolicyTests(unittest.TestCase):
+    @staticmethod
+    def _observation(*, rss_dbm: float, detected: bool) -> SignalObservation:
+        return SignalObservation(
+            drone_id="drone-01",
+            rss_dbm=rss_dbm,
+            latitude=37.5,
+            longitude=127.0,
+            altitude=50.0,
+            battery=80,
+            signal_measured_at=100.0,
+            position_measured_at=100.0,
+            detected=detected,
+        )
+
+    def test_hardware_mode_uses_only_fpga_flag(self) -> None:
+        observation = self._observation(rss_dbm=-20.0, detected=False)
+
+        with patch.object(settings, "input_mode", "signal_pipeline"):
+            self.assertFalse(gateway_main.detection_requested(observation))
+
+    def test_mock_mode_uses_configured_rss_threshold(self) -> None:
+        observation = self._observation(rss_dbm=-44.0, detected=False)
+
+        with (
+            patch.object(settings, "input_mode", "mock"),
+            patch.object(settings, "detection_mode", "rss_threshold"),
+            patch.object(settings, "rss_detection_threshold", -45.0),
+        ):
+            self.assertTrue(gateway_main.detection_requested(observation))
 
 
 if __name__ == "__main__":

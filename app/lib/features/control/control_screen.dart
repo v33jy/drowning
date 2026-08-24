@@ -251,7 +251,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                               'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
                           userAgentPackageName: 'com.drone.control_app',
                         ),
-                        const HeatmapPainterLayer(),
+                        const HeatmapLayer(),
                         const DroneMarkerLayer(),
                         RichAttributionWidget(
                           attributions: [

@@ -35,6 +35,8 @@ def combine_measurements(
         battery=flight_data.battery,
         signal_measured_at=signal.measured_at,
         position_measured_at=flight_data.position_measured_at,
+        camera_arm=signal.camera_arm,
+        detected=signal.detected,
     )
 
 

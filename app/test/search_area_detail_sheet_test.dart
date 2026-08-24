@@ -4,11 +4,8 @@ import 'package:control_app/features/control/providers/grid_provider.dart';
 import 'package:control_app/features/control/data/demo_feed.dart';
 import 'package:control_app/models/grid_cell.dart';
 import 'package:control_app/models/heatmap_cell.dart';
-import 'package:control_app/models/video_bookmark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:control_app/features/control/widgets/video_review_section.dart';
 
 void main() {
   test('describes cells relative to the nearest configured landmark', () {
@@ -85,22 +82,6 @@ void main() {
     );
   });
 
-  test('shows saved video age only for the last 24 hours', () {
-    final now = DateTime.utc(2026, 8, 22, 12);
-    expect(
-      formatSavedVideoAge(now.subtract(const Duration(minutes: 12)), now: now),
-      '12분 전',
-    );
-    expect(
-      formatSavedVideoAge(now.subtract(const Duration(hours: 3)), now: now),
-      '3시간 전',
-    );
-    expect(
-      formatSavedVideoAge(now.subtract(const Duration(days: 1)), now: now),
-      isNull,
-    );
-  });
-
   testWidgets(
     'shows operational guidance without internal measurement counts',
     (tester) async {
@@ -133,7 +114,7 @@ void main() {
     },
   );
 
-  testWidgets('opens the confirmation video in a fullscreen dialog', (
+  testWidgets('does not duplicate the saved video with a mock preview', (
     tester,
   ) async {
     final cell = HeatmapCell(
@@ -149,11 +130,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const Key('expand-confirmation-video')));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(Dialog), findsOneWidget);
-    expect(find.byTooltip('확대 영상 닫기'), findsOneWidget);
+    expect(find.byKey(const Key('expand-confirmation-video')), findsNothing);
   });
 
   testWidgets('does not show survivor call controls in a cell detail', (
@@ -173,57 +150,5 @@ void main() {
 
     expect(find.text('요구조자 전화'), findsNothing);
     expect(find.byKey(const Key('connect-survivor-call')), findsNothing);
-  });
-
-  testWidgets('offline demo does not request stored video', (tester) async {
-    await tester.pumpWidget(
-      const ProviderScope(
-        child: MaterialApp(
-          home: Scaffold(
-            body: VideoReviewSection(cellId: 'A0', demoMode: true),
-          ),
-        ),
-      ),
-    );
-
-    expect(find.textContaining('데모 모드'), findsNothing);
-    expect(find.byType(LinearProgressIndicator), findsNothing);
-  });
-
-  testWidgets('allows selecting every retained video bookmark', (tester) async {
-    final bookmarks = [
-      VideoBookmark(
-        bookmarkId: 'newest',
-        cellId: 'A0',
-        triggeredAt: DateTime(2026, 8, 15, 14),
-        frameCount: 1,
-        complete: true,
-      ),
-      VideoBookmark(
-        bookmarkId: 'earlier',
-        cellId: 'A0',
-        triggeredAt: DateTime(2026, 8, 15, 13),
-        frameCount: 1,
-        complete: true,
-      ),
-    ];
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: VideoBookmarkHistory(
-            bookmarks: bookmarks,
-            baseUrl: 'http://localhost:8000',
-          ),
-        ),
-      ),
-    );
-
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('08/15 13:00').last);
-    await tester.pumpAndSettle();
-
-    final image = tester.widget<Image>(find.byType(Image));
-    expect((image.image as NetworkImage).url, contains('/earlier/'));
   });
 }

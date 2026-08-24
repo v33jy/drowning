@@ -144,7 +144,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                               style: Theme.of(context).textTheme.bodyMedium,
                               decoration: InputDecoration(
                                 prefixIcon: const Icon(Icons.search, size: 20),
-                                hintText: '구역 · 드론 · 활동 검색',
+                                hintText: '구역 · 활동 검색',
                                 suffixIcon: _query.isEmpty
                                     ? null
                                     : IconButton(
@@ -407,9 +407,7 @@ class _LogTile extends StatelessWidget {
     final color = entry.severity.resolve(context);
     final icon = _entryIcon(entry);
     return InkWell(
-      onTap: entry.type == LogEntryType.detection
-          ? () => _showDetail(context)
-          : null,
+      onTap: () => _showDetail(context),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         child: Row(
@@ -437,28 +435,28 @@ class _LogTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '드론 ${entry.droneId} · ${_entryTimeLabel(entry)}',
+                    _entryTimeLabel(entry),
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                 ],
               ),
             ),
+            const SizedBox(width: AppSpacing.sm),
             if (entry.type == LogEntryType.detection) ...[
-              const SizedBox(width: AppSpacing.sm),
               StatusChip(
                 severity: entry.severity,
                 label: _detectionStatusLabel(entry.status!),
               ),
-              const SizedBox(width: AppSpacing.xs),
-              const Tooltip(
-                message: '상세 확인',
-                child: Icon(
-                  Icons.chevron_right,
-                  color: AppColors.textSecondary,
-                  size: 20,
-                ),
-              ),
             ],
+            const SizedBox(width: AppSpacing.xs),
+            const Tooltip(
+              message: '상세 확인',
+              child: Icon(
+                Icons.chevron_right,
+                color: AppColors.textSecondary,
+                size: 20,
+              ),
+            ),
           ],
         ),
       ),
@@ -477,7 +475,7 @@ class _LogTile extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 520, maxHeight: 620),
           child: LiquidGlassPanel(
             padding: const EdgeInsets.all(AppSpacing.lg),
-            child: _DetectionDetailSheet(entry: entry),
+            child: _LogDetailSheet(entry: entry),
           ),
         ),
       ),
@@ -535,89 +533,183 @@ String _detectionStatusLabel(DetectionStatus status) => switch (status) {
   DetectionStatus.falseAlarm => '오탐',
 };
 
-class _DetectionDetailSheet extends ConsumerWidget {
-  const _DetectionDetailSheet({required this.entry});
+class _LogDetailSheet extends ConsumerWidget {
+  const _LogDetailSheet({required this.entry});
   final LogEntry entry;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final event = entry.detectionEvent!;
-    final statusLabel = switch (entry.status!) {
-      DetectionStatus.pending => '처리 대기',
-      DetectionStatus.rescued => '구조 완료',
-      DetectionStatus.falseAlarm => '오탐 처리됨',
-    };
+    final event = entry.detectionEvent;
+    final color = entry.severity.resolve(context);
 
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '탐지 기록 상세',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: AppColors.navy,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: '닫기',
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close_rounded),
-              ),
-            ],
+          _LogDetailHeader(
+            icon: _entryIcon(entry),
+            title: _detailTypeLabel(entry),
+            subtitle: entry.title,
+            color: color,
+            onClose: () => Navigator.of(context).pop(),
           ),
-          const SizedBox(height: AppSpacing.md),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '드론 #${event.droneId} · ${locationLabelForCell(cellId: event.cellId, labels: ref.watch(gridLocationLabelProvider), grid: ref.watch(gridDefProvider))}',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              StatusChip(severity: entry.severity, label: statusLabel),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          MetricRow(
-            label: 'RSS',
-            value: event.rssDbm.toStringAsFixed(1),
-            unit: 'dBm',
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          MetricRow(label: '탐지 시각', value: _timeLabel(entry.timestamp)),
           const SizedBox(height: AppSpacing.lg),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              icon: const Icon(Icons.map_outlined, size: 18),
-              label: const Text('지도에서 보기'),
-              onPressed: () {
-                final bounds = ref.read(gridDefProvider)[event.cellId];
-                if (bounds != null) {
-                  final center = LatLng(
-                    (bounds.latMin + bounds.latMax) / 2,
-                    (bounds.lngMin + bounds.lngMax) / 2,
-                  );
-                  ref.read(mapFocusRequestProvider.notifier).state = center;
-                }
-                // 관제가 더 이상 탭이 아니라 홈 화면이라, 시트를 닫고 기록
-                // 화면 자체도 pop 해야 관제가 다시 보인다.
-                Navigator.of(context)
-                  ..pop()
-                  ..pop();
-              },
+          MetricRow(label: '발생 시각', value: _detailedTimeLabel(entry.timestamp)),
+          if (entry.callDetails case final call?) ...[
+            const SizedBox(height: AppSpacing.xs),
+            MetricRow(label: '시작 시각', value: _clockLabel(call.startedAt)),
+            if (call.endedAt case final endedAt?) ...[
+              const SizedBox(height: AppSpacing.xs),
+              MetricRow(label: '종료 시각', value: _clockLabel(endedAt)),
+              const SizedBox(height: AppSpacing.xs),
+              MetricRow(label: '통화 시간', value: _durationLabel(call.duration!)),
+            ],
+          ],
+          if (event != null) ...[
+            const SizedBox(height: AppSpacing.xs),
+            MetricRow(
+              label: '탐지 구역',
+              value: locationLabelForCell(
+                cellId: event.cellId,
+                labels: ref.watch(gridLocationLabelProvider),
+                grid: ref.watch(gridDefProvider),
+              ),
             ),
-          ),
+            const SizedBox(height: AppSpacing.xs),
+            MetricRow(
+              label: '신호 강도',
+              value: event.rssDbm.toStringAsFixed(1),
+              unit: 'dBm',
+            ),
+          ],
+          const SizedBox(height: AppSpacing.lg),
+          if (event != null)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                icon: const Icon(Icons.map_outlined, size: 18),
+                label: const Text('지도에서 보기'),
+                onPressed: () {
+                  final bounds = ref.read(gridDefProvider)[event.cellId];
+                  if (bounds != null) {
+                    final center = LatLng(
+                      (bounds.latMin + bounds.latMax) / 2,
+                      (bounds.lngMin + bounds.lngMax) / 2,
+                    );
+                    ref.read(mapFocusRequestProvider.notifier).state = center;
+                  }
+                  // 관제가 더 이상 탭이 아니라 홈 화면이라, 시트를 닫고 기록
+                  // 화면 자체도 pop 해야 관제가 다시 보인다.
+                  Navigator.of(context)
+                    ..pop()
+                    ..pop();
+                },
+              ),
+            ),
         ],
       ),
     );
   }
+}
+
+String _detailTypeLabel(LogEntry entry) => switch (entry.type) {
+  LogEntryType.detection => '탐지 기록',
+  LogEntryType.batteryLow => '배터리 경고',
+  LogEntryType.signalLost => '통신 경고',
+  LogEntryType.activity => switch (entry.activityKind!) {
+    LogActivityKind.searchStarted => '수색 활동',
+    LogActivityKind.areaNeedsRecheck => '구역 재확인',
+    LogActivityKind.callConnecting ||
+    LogActivityKind.callConnected ||
+    LogActivityKind.callEnded => '음성 통화',
+    LogActivityKind.detectionResolved => '탐지 처리',
+  },
+};
+
+class _LogDetailHeader extends StatelessWidget {
+  const _LogDetailHeader({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.onClose,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.fromLTRB(18, 16, 8, 16),
+    decoration: BoxDecoration(
+      gradient: const LinearGradient(
+        colors: [AppColors.navy, Color(0xFF0A3B70)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Colors.white.withValues(alpha: .18)),
+      boxShadow: [
+        BoxShadow(
+          color: AppColors.navy.withValues(alpha: .22),
+          blurRadius: 18,
+          offset: const Offset(0, 7),
+        ),
+      ],
+    ),
+    child: Row(
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: .12),
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(color: Colors.white.withValues(alpha: .16)),
+          ),
+          child: Icon(icon, color: color, size: 22),
+        ),
+        const SizedBox(width: 13),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: .7),
+                  fontSize: 12.5,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: '닫기',
+          onPressed: onClose,
+          color: Colors.white,
+          icon: const Icon(Icons.close_rounded),
+        ),
+      ],
+    ),
+  );
 }
 
 String _timeLabel(DateTime t) {
@@ -627,4 +719,15 @@ String _timeLabel(DateTime t) {
   if (diff.inMinutes < 60) return '${diff.inMinutes}분 전';
   if (diff.inHours < 24) return '${diff.inHours}시간 전';
   return '${t.month}/${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+}
+
+String _detailedTimeLabel(DateTime timestamp) =>
+    '${_clockLabel(timestamp)} (${_relativeTimeLabel(timestamp)})';
+
+String _relativeTimeLabel(DateTime timestamp) {
+  final diff = DateTime.now().difference(timestamp);
+  if (diff.isNegative || diff.inMinutes < 1) return '방금 전';
+  if (diff.inMinutes < 60) return '${diff.inMinutes}분 전';
+  if (diff.inHours < 24) return '${diff.inHours}시간 전';
+  return '${diff.inDays}일 전';
 }

@@ -88,7 +88,7 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
     _append(
       LogActivityKind.searchStarted,
       drone.droneId,
-      '수색 시작 — 드론 #${drone.droneId} 운용 시작',
+      '수색 시작 — 운용 시작',
       Severity.ok,
     );
   }

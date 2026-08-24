@@ -20,14 +20,14 @@ class OfflineBanner extends ConsumerWidget {
     );
     if (lostDrones.isEmpty) return const SizedBox.shrink();
 
-    final label = lostDrones.length == 1
-        ? '드론 #${lostDrones.first.droneId} 신호 상실'
-        : '드론 ${lostDrones.length}대 신호 상실';
+    const label = '드론 신호 상실';
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.sm,
+      ),
       color: AppColors.surfaceSunken,
       child: Row(
         children: [

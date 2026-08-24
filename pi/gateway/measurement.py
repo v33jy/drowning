@@ -8,6 +8,8 @@ class SignalMeasurement:
 
     rss_dbm: float
     measured_at: float
+    camera_arm: bool = False
+    detected: bool = False
 
     def __post_init__(self) -> None:
         if self.rss_dbm > 0:
@@ -28,6 +30,8 @@ class SignalObservation:
     battery: Optional[int]
     signal_measured_at: float
     position_measured_at: float
+    camera_arm: bool = False
+    detected: bool = False
 
     def __post_init__(self) -> None:
         if not self.drone_id:

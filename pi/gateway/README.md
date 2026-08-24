@@ -12,7 +12,8 @@ H743와 SDR/FPGA에서 데이터를 수신하고, FastAPI 서버(`/drones/{id}/t
 - SDR과 FPGA를 각각 mock 또는 실제 장치로 선택 가능
 - MAVLink 연결이 끊기면 자동 재연결
 - 텔레메트리·신호세기 서버 전송, 실패 시 자동 재시도
-- 탐지(survivor detection) 이벤트 전송 — FPGA 인터럽트 또는 RSS 임계값, 둘 중 선택 가능
+- 실기 모드는 FPGA의 `camera_arm`·`detected` 판정을 그대로 사용하고, Mock 모드만 RSS 임계값 사용
+- `camera_arm` 이후 Raspberry Pi 카메라의 하드웨어 H.264→RTSP 송출 시작·지연 종료
   (그리드 범위 밖이라 cell_id가 없으면 재시도 낭비 없이 보류)
 
 ## 실행
@@ -27,12 +28,13 @@ INPUT_MODE=mock SERVER_URL=http://127.0.0.1:8001 python3 main.py
 pip install -r requirements-hardware.txt
 INPUT_MODE=signal_pipeline SDR_MODE=real FPGA_MODE=real \
   FC_SERIAL_PORT=/dev/serial0 FC_BAUD_RATE=115200 \
-  DETECTION_MODE=rss_threshold python3 main.py
+  CAMERA_ENABLED=true CAMERA_RTSP_URL=rtsp://SERVER_IP:8554/drone \
+  python3 main.py
 
 # H743는 실제로 연결하고 SDR/FPGA만 mock으로 검증
 INPUT_MODE=signal_pipeline SDR_MODE=mock FPGA_MODE=mock \
   FC_SERIAL_PORT=/dev/serial0 FC_BAUD_RATE=115200 \
-  DETECTION_MODE=rss_threshold python3 main.py
+  CAMERA_ENABLED=false python3 main.py
 ```
 
 ## 환경변수
@@ -60,9 +62,16 @@ INPUT_MODE=signal_pipeline SDR_MODE=mock FPGA_MODE=mock \
 | `REQUEST_TIMEOUT` | `5` | 서버 응답 대기 시간(초) |
 | `MAX_RETRIES` | `3` | 전송 재시도 횟수 |
 | `DRY_RUN` | `false` | true면 실제 전송 없이 로그만 출력 |
-| `DETECTION_MODE` | `fpga` | `fpga`(인터럽트 대기, 아직 미구현) / `rss_threshold`(RSS 임계값으로 자체 판단) |
-| `RSS_DETECTION_THRESHOLD` | `-45.0` | `rss_threshold` 모드에서 탐지로 판단할 RSS 임계값(dBm) |
+| `DETECTION_MODE` | `fpga` | Mock 모드에서만 `rss_threshold` 선택 가능. 실기 모드는 FPGA 결과 고정 |
+| `RSS_DETECTION_THRESHOLD` | `-45.0` | Mock 모드의 탐지 임계값(dBm) |
+| `MOCK_CAMERA_ARM_THRESHOLD` | `-55.0` | Mock 모드에서 카메라 준비 플래그를 켜는 임계값(dBm) |
 | `DETECTION_COOLDOWN_SEC` | `60` | 같은 드론에 대해 탐지를 다시 트리거하기까지 최소 대기 시간(초) |
+| `CAMERA_ENABLED` | `false` | FPGA 플래그에 따른 카메라 송출 제어 사용 여부 |
+| `CAMERA_HOLD_SECONDS` | `20` | 마지막 활성 플래그 이후 송출 유지 시간(초) |
+| `CAMERA_WIDTH` / `CAMERA_HEIGHT` | `854` / `480` | Pi 4B 부하를 고려한 송출 해상도 |
+| `CAMERA_FPS` | `10` | H.264 송출 프레임률 |
+| `CAMERA_BITRATE` | `800000` | H.264 비트레이트(bps) |
+| `CAMERA_RTSP_URL` | `rtsp://127.0.0.1:8554/drone` | MediaMTX RTSP 게시 주소 |
 
 ## 테스트
 
@@ -75,8 +84,8 @@ MAVLink 변환·SDR/FPGA 파이프라인·서버 전송 로직을 다룹니다
 
 ## 참고
 
-- `DETECTION_MODE=fpga`가 최종 설계(FPGA가 신호를 식별해 인터럽트를 주면 그걸 그대로 전달)지만,
-  FPGA 인터페이스가 아직 확정되지 않아 `check_fpga_detection()`은 자리표시자 상태입니다.
-  그 전까지 시연이 필요하면 `DETECTION_MODE=rss_threshold`로 전환해서 쓰면 됩니다.
+- Pi와 FPGA 사이 결과 패킷 v2에는 `camera_arm`과 `detected`가 들어갑니다. Pi는 이를 장치 제어와
+  서버 전송에만 사용하며 실기 모드에서 신호 판정을 다시 수행하지 않습니다.
 - Raspberry Pi 측 `RtlSdrSource`와 `SpiFpgaTransport`는 구현되어 있습니다. 실제 종단 간 연결에는
-  FPGA RTL의 SPI slave와 연산 완료 READY 처리가 필요합니다.
+  FPGA RTL의 SPI slave, 연산 완료 READY, 결과 패킷 직렬화가 필요합니다. FPGA→Heltec UART
+  출력도 동일 판정 결과를 별도 전송하는 하드웨어 연결 작업으로 남아 있습니다.

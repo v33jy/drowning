@@ -8,15 +8,14 @@ thin: parse the request, call the matching function here, shape the response.
 
 from __future__ import annotations
 
-import base64
 import time
 import uuid
 from typing import Optional
 
 from fastapi import HTTPException
 
+import config
 import state
-import video_history
 from heatmap import latlng_to_cell_id
 from models import DetectionEvent, DroneTelemetry, SignalReading, WsMessage
 
@@ -86,11 +85,6 @@ def _store_signal_measurement(measurement: dict) -> None:
     ] = measurement
 
 
-def _search_status(snapshot: list[dict], cell_id: str) -> str:
-    """Read one cell status from a heatmap snapshot."""
-    return next(cell["status"] for cell in snapshot if cell["cell_id"] == cell_id)
-
-
 async def submit_telemetry(drone_id: int, telemetry: DroneTelemetry) -> dict:
     entry = {
         "drone_id": drone_id,
@@ -131,7 +125,6 @@ async def submit_signal(drone_id: int, reading: SignalReading) -> dict:
             drone_id, reading, lat, lng, altitude, cell_id
         )
         _store_signal_measurement(measurement)
-        previous_status = _search_status(state.heatmap.snapshot(), cell_id)
         state.heatmap.update(
             cell_id,
             drone_id,
@@ -139,9 +132,6 @@ async def submit_signal(drone_id: int, reading: SignalReading) -> dict:
             measurement["measured_at"],
         )
         snapshot = state.heatmap.snapshot()
-        current_status = _search_status(snapshot, cell_id)
-        if previous_status != "needs_recheck" and current_status == "needs_recheck":
-            video_history.create_recheck_bookmark(measurement)
 
     await state.manager.broadcast(WsMessage.heatmap_update(snapshot))
     return measurement
@@ -152,6 +142,7 @@ async def report_detection(event: DetectionEvent) -> dict:
     call_session_id = str(uuid.uuid4())
     entry = {
         **event.model_dump(),
+        "stream_url": event.stream_url or config.MEDIAMTX_WHEP_URL,
         "timestamp": time.time(),
         "detection_id": str(uuid.uuid4()),
         "call_session_id": call_session_id,
@@ -177,11 +168,3 @@ async def report_detection(event: DetectionEvent) -> dict:
             if survivor_ws in state.survivor_waiting:
                 state.survivor_waiting.remove(survivor_ws)
     return entry
-
-
-async def submit_video_frame(drone_id: int, frame_bytes: bytes, seq: int) -> None:
-    """frame_bytes is a single raw JPEG frame — encoding happens only on this last
-    hop (server → app), so the drone → server WebSocket stays fully binary."""
-    video_history.retain_frame(drone_id, frame_bytes, seq)
-    frame_b64 = base64.b64encode(frame_bytes).decode("ascii")
-    await state.manager.broadcast(WsMessage.video_frame(drone_id, frame_b64, seq))
