@@ -15,6 +15,7 @@ import '../log/log_screen.dart';
 import '../log/providers/combined_log_provider.dart';
 import '../settings/settings_screen.dart';
 import 'detection_panel_selection.dart';
+import 'operational_section.dart';
 import 'providers/drones_provider.dart';
 import 'providers/grid_provider.dart';
 import 'providers/map_focus_provider.dart';
@@ -38,7 +39,7 @@ class ControlScreen extends ConsumerStatefulWidget {
 class _ControlScreenState extends ConsumerState<ControlScreen> {
   static const _defaultSearchPanelWidth = 440.0;
   static const _defaultSearchPanelHeight = 480.0;
-  static const _defaultDetectionPanelHeight = 640.0;
+  static const _defaultDetectionPanelHeight = 760.0;
   static const _minimumSearchPanelExtent = 320.0;
   static const _mapOverlayTop = 92.0;
   static const _mapOverlayVerticalInset = 108.0;
@@ -46,6 +47,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
   final _mapController = MapController();
   bool _centeredOnFirstDrone = false;
   DetectionEvent? _activeDetection;
+  DetectionStatus _activeDetectionStatus = DetectionStatus.pending;
   String? _selectedCellId;
   double _searchPanelWidth = _defaultSearchPanelWidth;
   double _searchPanelHeight = _defaultSearchPanelHeight;
@@ -67,37 +69,72 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
             callState: ref.read(callServiceProvider),
             preferredDetection: event,
           );
-    setState(() => _activeDetection = selected);
+    _showDetection(selected);
   }
+
+  void _showDetection(
+    DetectionEvent event, {
+    DetectionStatus status = DetectionStatus.pending,
+  }) => setState(() {
+    _selectedCellId = null;
+    _activeDetection = event;
+    _activeDetectionStatus = status;
+  });
+
+  void _showSearchArea(String cellId) => setState(() {
+    _activeDetection = null;
+    _selectedCellId = cellId;
+  });
+
+  void _closeMapPanels() => setState(() {
+    _activeDetection = null;
+    _selectedCellId = null;
+  });
 
   void _handleDetectionOutcome(DetectionOutcome outcome) {
     if (!mounted) return;
     if (outcome == DetectionOutcome.minimized) {
-      setState(() => _activeDetection = null);
+      _closeMapPanels();
       return;
     }
     final queue = ref.read(pendingDetectionQueueProvider);
-    setState(() => _activeDetection = queue.lastOrNull);
+    final next = queue.lastOrNull;
+    if (next == null) {
+      _closeMapPanels();
+    } else {
+      _showDetection(next);
+    }
   }
 
   void _openSearchAreaDetail(LatLng point) {
     final grid = ref.read(gridDefProvider);
     final cellId = findContainingCellId(grid, point);
     if (cellId == null) return;
-    setState(() => _selectedCellId = cellId);
+    _showSearchArea(cellId);
+  }
+
+  ({double maxWidth, double maxHeight, double minWidth, double minHeight})
+  _panelBounds(BoxConstraints constraints) {
+    final maxWidth = constraints.maxWidth - AppSpacing.md * 2;
+    final maxHeight = constraints.maxHeight - _mapOverlayVerticalInset;
+    return (
+      maxWidth: maxWidth,
+      maxHeight: maxHeight,
+      minWidth: math.min(maxWidth, _minimumSearchPanelExtent),
+      minHeight: math.min(maxHeight, _minimumSearchPanelExtent),
+    );
   }
 
   Widget _buildResizableSearchPanel(
     BoxConstraints constraints,
     String selectedCellId,
   ) {
-    final maxWidth = constraints.maxWidth - AppSpacing.md * 2;
-    final maxHeight = constraints.maxHeight - _mapOverlayVerticalInset;
-    final minWidth = math.min(maxWidth, _minimumSearchPanelExtent);
-    final minHeight = math.min(maxHeight, _minimumSearchPanelExtent);
-    final panelWidth = _searchPanelWidth.clamp(minWidth, maxWidth).toDouble();
+    final bounds = _panelBounds(constraints);
+    final panelWidth = _searchPanelWidth
+        .clamp(bounds.minWidth, bounds.maxWidth)
+        .toDouble();
     final panelHeight = _searchPanelHeight
-        .clamp(minHeight, maxHeight)
+        .clamp(bounds.minHeight, bounds.maxHeight)
         .toDouble();
     final widthScale = panelWidth / _defaultSearchPanelWidth;
     final heightScale = panelHeight / _defaultSearchPanelHeight;
@@ -114,10 +151,10 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
         maxHeight: panelHeight,
         onResize: (details) => setState(() {
           _searchPanelWidth = (_searchPanelWidth - details.delta.dx)
-              .clamp(minWidth, maxWidth)
+              .clamp(bounds.minWidth, bounds.maxWidth)
               .toDouble();
           _searchPanelHeight = (_searchPanelHeight + details.delta.dy)
-              .clamp(minHeight, maxHeight)
+              .clamp(bounds.minHeight, bounds.maxHeight)
               .toDouble();
         }),
         child: MediaQuery(
@@ -127,7 +164,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
           child: LiveSearchAreaDetail(
             key: ValueKey(selectedCellId),
             cellId: selectedCellId,
-            onClose: () => setState(() => _selectedCellId = null),
+            onClose: _closeMapPanels,
           ),
         ),
       ),
@@ -141,15 +178,12 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     Map<String, String> locationLabels,
     Map<String, CellBounds> gridDefinition,
   ) {
-    final maxWidth = constraints.maxWidth - AppSpacing.md * 2;
-    final maxHeight = constraints.maxHeight - _mapOverlayVerticalInset;
-    final minWidth = math.min(maxWidth, _minimumSearchPanelExtent);
-    final minHeight = math.min(maxHeight, _minimumSearchPanelExtent);
+    final bounds = _panelBounds(constraints);
     final panelWidth = _detectionPanelWidth
-        .clamp(minWidth, maxWidth)
+        .clamp(bounds.minWidth, bounds.maxWidth)
         .toDouble();
     final panelHeight = _detectionPanelHeight
-        .clamp(minHeight, maxHeight)
+        .clamp(bounds.minHeight, bounds.maxHeight)
         .toDouble();
     final widthScale = panelWidth / _defaultSearchPanelWidth;
     final heightScale = panelHeight / _defaultDetectionPanelHeight;
@@ -169,6 +203,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
         child: DetectionPanelStack(
           maxHeight: panelHeight,
           activeDetection: activeDetection,
+          activeDetectionStatus: _activeDetectionStatus,
           pendingDetections: pendingDetections,
           locationLabels: locationLabels,
           gridDefinition: gridDefinition,
@@ -176,10 +211,10 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
           onOutcome: _handleDetectionOutcome,
           onResize: (details) => setState(() {
             _detectionPanelWidth = (_detectionPanelWidth - details.delta.dx)
-                .clamp(minWidth, maxWidth)
+                .clamp(bounds.minWidth, bounds.maxWidth)
                 .toDouble();
             _detectionPanelHeight = (_detectionPanelHeight + details.delta.dy)
-                .clamp(minHeight, maxHeight)
+                .clamp(bounds.minHeight, bounds.maxHeight)
                 .toDouble();
           }),
         ),
@@ -221,6 +256,14 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
         );
       }
     });
+    ref.listen(detectionFocusRequestProvider, (previous, next) {
+      if (next != null) {
+        _showDetection(next.event, status: next.status);
+        Future.microtask(
+          () => ref.read(detectionFocusRequestProvider.notifier).state = null,
+        );
+      }
+    });
 
     final activeDetection = _activeDetection;
     final selectedCellId = _selectedCellId;
@@ -251,7 +294,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                               'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
                           userAgentPackageName: 'com.drone.control_app',
                         ),
-                        const HeatmapPainterLayer(),
+                        const HeatmapLayer(),
                         const DroneMarkerLayer(),
                         RichAttributionWidget(
                           attributions: [
@@ -290,6 +333,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
             child: SafeArea(
               bottom: false,
               child: OperationHeader(
+                onHomeTap: () {},
                 queueCount: ref.watch(
                   pendingDetectionQueueProvider.select((q) => q.length),
                 ),
@@ -297,9 +341,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                   final queue = ref.read(pendingDetectionQueueProvider);
                   if (queue.isNotEmpty) _openDetectionPanel(queue.last);
                 },
-                onLogTap: () => _openRoute(const LogScreen()),
-                onHelpTap: () => _openRoute(const HelpScreen()),
-                onSettingsTap: () => _openRoute(const SettingsScreen()),
+                onLogTap: () => _openSection(OperationalSection.log),
+                onHelpTap: () => _openSection(OperationalSection.help),
+                onSettingsTap: () => _openSection(OperationalSection.settings),
               ),
             ),
           ),
@@ -308,7 +352,42 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     );
   }
 
-  void _openRoute(Widget route) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => route));
+  void _openSection(OperationalSection section) {
+    if (section == OperationalSection.control) {
+      Navigator.of(context).pop();
+      return;
+    }
+    final route = switch (section) {
+      OperationalSection.log => LogScreen(
+        onNavigate: _openSection,
+        onQueueTap: _openQueueFromSection,
+      ),
+      OperationalSection.help => HelpScreen(
+        onNavigate: _openSection,
+        onQueueTap: _openQueueFromSection,
+      ),
+      OperationalSection.settings => SettingsScreen(
+        onNavigate: _openSection,
+        onQueueTap: _openQueueFromSection,
+      ),
+      OperationalSection.control => throw StateError('handled above'),
+    };
+    final pageRoute = PageRouteBuilder<void>(
+      pageBuilder: (_, _, _) => route,
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
+    );
+    final controlIsVisible = ModalRoute.of(context)?.isCurrent ?? true;
+    if (!controlIsVisible) {
+      Navigator.of(context).pushReplacement(pageRoute);
+    } else {
+      Navigator.of(context).push(pageRoute);
+    }
+  }
+
+  void _openQueueFromSection() {
+    final queue = ref.read(pendingDetectionQueueProvider);
+    if (queue.isNotEmpty) _openDetectionPanel(queue.last);
+    Navigator.of(context).pop();
   }
 }

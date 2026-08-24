@@ -24,30 +24,8 @@ class LiquidPageBackdrop extends StatelessWidget {
         colors: [startColor, endColor],
       ),
     ),
-    child: const CustomPaint(painter: _GridPainter()),
+    child: const SizedBox.expand(),
   );
-}
-
-class _GridPainter extends CustomPainter {
-  const _GridPainter();
-
-  static const double spacing = 48;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.navy.withValues(alpha: .035)
-      ..strokeWidth = 1;
-    for (double x = 0; x < size.width; x += spacing) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += spacing) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// Consistent back navigation header used outside the main map.

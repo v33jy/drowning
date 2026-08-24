@@ -13,19 +13,10 @@ from __future__ import annotations
 import asyncio
 import math
 import os
-import struct
-import zlib
 
 import httpx
-import websockets
 
 SERVER_URL = os.environ.get("DRONE_SERVER_URL", "http://localhost:8001")
-WS_URL     = SERVER_URL.replace("http://", "ws://").replace("https://", "wss://")
-
-# 영상 프레임 시뮬레이션 (단색 PNG, 카메라 하드웨어 없이 파이프라인 검증용)
-VIDEO_WIDTH, VIDEO_HEIGHT = 160, 120
-VIDEO_COLORS = [(220, 40, 40), (40, 180, 80), (40, 100, 220), (230, 200, 40)]
-VIDEO_FPS = 10
 
 # 강남역 (출발)
 START_LAT = 37.4979
@@ -85,60 +76,19 @@ async def run() -> None:
         # 탐지 직후에도 드론은 현장 호버링
         await _telemetry(client, TARGET_LAT, TARGET_LNG, 100 - STEPS * 0.25)
 
-        # 탐지 시점부터 영상은 별도 WebSocket 연결로 계속 스트리밍 (텔레메트리 주기와 무관)
-        video_task = asyncio.create_task(_stream_video())
-
-        try:
-            # ── Phase 4: 계속 호버링 ───────────────────────────────────────
-            print("\n드론 현장 호버링 중 (Ctrl+C로 종료)\n")
-            tick = 0
-            while True:
-                bat = max(10, 100 - STEPS * 0.25 - tick * 0.1)
-                await _telemetry(client, TARGET_LAT, TARGET_LNG, bat)
-                tick += 1
-                await asyncio.sleep(2)
-        finally:
-            video_task.cancel()
+        # ── Phase 4: 계속 호버링 ───────────────────────────────────────
+        print("\n드론 현장 호버링 중 (Ctrl+C로 종료)\n")
+        tick = 0
+        while True:
+            bat = max(10, 100 - STEPS * 0.25 - tick * 0.1)
+            await _telemetry(client, TARGET_LAT, TARGET_LNG, bat)
+            tick += 1
+            await asyncio.sleep(2)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-async def _stream_video() -> None:
-    """Open one WS connection and push frames continuously at VIDEO_FPS —
-    this is what real streaming looks like, vs. the old POST-per-frame hack.
-    Runs as a background task until cancelled; reconnects if the socket drops.
-    """
-    url = f"{WS_URL}/drones/{DRONE_ID}/video"
-    seq = 0
-    while True:
-        try:
-            async with websockets.connect(url) as ws:
-                while True:
-                    color = VIDEO_COLORS[(seq // VIDEO_FPS) % len(VIDEO_COLORS)]  # 1초에 한 번 색 전환
-                    frame = _png_bytes(VIDEO_WIDTH, VIDEO_HEIGHT, color)
-                    await ws.send(frame)
-                    seq += 1
-                    await asyncio.sleep(1 / VIDEO_FPS)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            await asyncio.sleep(1)  # 서버 재시작 등으로 끊기면 잠시 후 재연결
-
-
-def _png_bytes(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
-    """Hand-build a minimal solid-color PNG — no Pillow dependency needed."""
-    def chunk(tag: bytes, data: bytes) -> bytes:
-        return struct.pack("!I", len(data)) + tag + data + struct.pack("!I", zlib.crc32(tag + data))
-
-    sig = b"\x89PNG\r\n\x1a\n"
-    ihdr = struct.pack("!IIBBBBB", width, height, 8, 2, 0, 0, 0)  # 8-bit, RGB, no interlace
-    raw_row = b"\x00" + bytes(rgb) * width  # filter byte 0 (none) + RGB pixels
-    raw = raw_row * height
-    idat = zlib.compress(raw, 6)
-    return sig + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
-
 
 async def _telemetry(client: httpx.AsyncClient, lat: float, lng: float, bat: float) -> str | None:
     r = await client.post(f"/drones/{DRONE_ID}/telemetry", json={

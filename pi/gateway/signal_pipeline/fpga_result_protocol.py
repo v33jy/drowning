@@ -5,8 +5,8 @@ from signal_pipeline.models import FpgaResult
 
 
 RESULT_MAGIC = b"\x55\xAA"
-RESULT_VERSION = 1
-_RESULT_STRUCT = struct.Struct(">2sBIHdddfB")
+RESULT_VERSION = 2
+_RESULT_STRUCT = struct.Struct(">2sBIHdddfBB")
 RESULT_PACKET_SIZE = _RESULT_STRUCT.size
 
 
@@ -36,6 +36,7 @@ def encode_fpga_result(result: FpgaResult) -> bytes:
         result.target_power,
         result.noise_floor,
         result.rss_dbm,
+        int(result.camera_arm),
         int(result.detected),
     )
 
@@ -55,6 +56,7 @@ def decode_fpga_result(packet: bytes) -> FpgaResult:
         target_power,
         noise_floor,
         rss_dbm,
+        camera_arm,
         detected,
     ) = _RESULT_STRUCT.unpack(packet)
 
@@ -64,8 +66,10 @@ def decode_fpga_result(packet: bytes) -> FpgaResult:
         raise FpgaResultProtocolError(
             f"Unsupported FPGA result version: {version}"
         )
-    if detected not in (0, 1):
-        raise FpgaResultProtocolError("detected field must be 0 or 1")
+    if camera_arm not in (0, 1) or detected not in (0, 1):
+        raise FpgaResultProtocolError(
+            "camera_arm and detected fields must be 0 or 1"
+        )
     _validate(sequence, peak_bin)
 
     try:
@@ -77,6 +81,7 @@ def decode_fpga_result(packet: bytes) -> FpgaResult:
             noise_floor=noise_floor,
             rss_dbm=rss_dbm,
             detected=bool(detected),
+            camera_arm=bool(camera_arm),
         )
     except ValueError as error:
         raise FpgaResultProtocolError(

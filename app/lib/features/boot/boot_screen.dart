@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../config.dart';
 import '../../core/theme/app_colors.dart';
@@ -10,7 +11,7 @@ import '../control/providers/grid_provider.dart';
 import '../control/providers/ws_providers.dart';
 import '../settings/providers/settings_provider.dart';
 
-enum _BootPhase { splash, connecting, failed, success }
+enum _BootPhase { splash, connecting, failed, success, ready }
 
 /// Entry flow — Splash → 서버 연결 → 실패 시 Retry.
 /// One route, branching on [_BootPhase], per the confirmed design (this
@@ -49,7 +50,7 @@ class _BootScreenState extends ConsumerState<BootScreen> {
             DemoFeed.locationLabels;
         await ref.read(wsClientProvider).connect(Config.wsUrl);
         if (!mounted) return;
-        setState(() => _phase = _BootPhase.success);
+        await _completeConnection();
         return;
       }
 
@@ -60,7 +61,7 @@ class _BootScreenState extends ConsumerState<BootScreen> {
       await ref.read(wsClientProvider).connect(settings.wsUrl);
 
       if (!mounted) return;
-      setState(() => _phase = _BootPhase.success);
+      await _completeConnection();
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -69,6 +70,13 @@ class _BootScreenState extends ConsumerState<BootScreen> {
         });
       }
     }
+  }
+
+  Future<void> _completeConnection() async {
+    if (!mounted) return;
+    setState(() => _phase = _BootPhase.success);
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    if (mounted) setState(() => _phase = _BootPhase.ready);
   }
 
   void _retry() {
@@ -81,13 +89,17 @@ class _BootScreenState extends ConsumerState<BootScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_phase == _BootPhase.success) return const ControlScreen();
+    if (_phase == _BootPhase.ready) return const ControlScreen();
 
     final Widget content = switch (_phase) {
       _BootPhase.splash => const _SplashBody(),
-      _BootPhase.connecting => const _ConnectingBody(),
+      _BootPhase.connecting => const _ConnectionBody(
+        message: '서버 연결 중',
+        loading: true,
+      ),
       _BootPhase.failed => _FailureBody(message: _error!, onRetry: _retry),
-      _BootPhase.success => const SizedBox.shrink(),
+      _BootPhase.success => const _ConnectionBody(message: '서버 연결 성공'),
+      _BootPhase.ready => const SizedBox.shrink(),
     };
 
     return Scaffold(
@@ -113,11 +125,7 @@ class _SplashBody extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.satellite_alt_outlined,
-                size: 48,
-                color: AppColors.primary,
-              ),
+              const _BrandLogo(size: 76),
               const SizedBox(height: AppSpacing.md),
               Text(
                 'DROWNING',
@@ -143,8 +151,11 @@ class _SplashBody extends StatelessWidget {
   }
 }
 
-class _ConnectingBody extends StatelessWidget {
-  const _ConnectingBody();
+class _ConnectionBody extends StatelessWidget {
+  const _ConnectionBody({required this.message, this.loading = false});
+
+  final String message;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -152,13 +163,60 @@ class _ConnectingBody extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const CircularProgressIndicator(color: AppColors.primary),
+          const _BrandLogo(size: 88),
           const SizedBox(height: AppSpacing.lg),
-          Text('서버에 연결하는 중…', style: Theme.of(context).textTheme.bodyMedium),
+          Text(
+            'DROWNING',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              color: AppColors.navy,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.4,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          if (loading) ...[
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                color: AppColors.primary,
+                strokeWidth: 2.5,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ] else ...[
+            const Icon(
+              Icons.check_circle_rounded,
+              color: AppColors.success,
+              size: 24,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+          Text(
+            message,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: loading ? AppColors.textSecondary : AppColors.success,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ],
       ),
     );
   }
+}
+
+class _BrandLogo extends StatelessWidget {
+  const _BrandLogo({required this.size});
+
+  static const _assetPath = 'assets/images/drowning-drone-logo.svg';
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => SizedBox.square(
+    dimension: size,
+    child: SvgPicture.asset(_assetPath, semanticsLabel: 'DROWNING 로고'),
+  );
 }
 
 class _FailureBody extends StatelessWidget {

@@ -56,7 +56,3 @@ class WsMessage:
     @staticmethod
     def detection(event: dict) -> dict:
         return {"type": "detection", "data": event}
-
-    @staticmethod
-    def video_frame(drone_id: int, frame_b64: str, seq: int) -> dict:
-        return {"type": "video_frame", "data": {"drone_id": drone_id, "frame_b64": frame_b64, "seq": seq}}

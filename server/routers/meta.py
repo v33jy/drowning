@@ -10,7 +10,6 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 import state
-import video_history
 from heatmap import grid_definition
 
 router = APIRouter(tags=["meta"])
@@ -28,7 +27,6 @@ async def get_state() -> dict:
         "heatmap": state.heatmap.snapshot(),
         "signal_readings": list(state.signal_readings),
         "detections": list(state.detections),
-        "video_bookmarks": video_history.list_bookmarks(),
     }
 
 

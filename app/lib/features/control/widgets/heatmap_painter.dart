@@ -1,70 +1,50 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../../models/grid_cell.dart';
 import '../../../models/heatmap_cell.dart';
 import '../providers/grid_provider.dart';
 import '../providers/heatmap_provider.dart';
 
-/// Radio-signal heatmap. Only this widget rebuilds when heatmap cells
-/// change — never the map or markers.
-class HeatmapPainterLayer extends ConsumerWidget {
-  const HeatmapPainterLayer({super.key});
+/// RSS 구역을 지도 좌표 기반 폴리곤으로 표시한다.
+/// 화면 픽셀을 직접 계산하면 지도 이동·확대 후 원점이 어긋날 수 있으므로
+/// flutter_map이 각 모서리를 투영하도록 맡긴다.
+class HeatmapLayer extends ConsumerWidget {
+  const HeatmapLayer({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final gridDef = ref.watch(gridDefProvider);
     final cells = ref.watch(heatmapProvider);
-    if (gridDef.isEmpty) return const SizedBox.shrink();
 
-    final camera = MapCamera.of(context);
-    return CustomPaint(
-      painter: _HeatmapPainter(cells: cells, gridDef: gridDef, camera: camera),
-      // Size.infinite paints nothing — SizedBox.expand gives the full map size.
-      child: const SizedBox.expand(),
+    return PolygonLayer(
+      polygons: [
+        for (final entry in cells.entries)
+          if (gridDef[entry.key] case final bounds?)
+            _buildPolygon(entry.value, bounds),
+      ],
     );
   }
-}
 
-class _HeatmapPainter extends CustomPainter {
-  const _HeatmapPainter({
-    required this.cells,
-    required this.gridDef,
-    required this.camera,
-  });
+  Polygon _buildPolygon(HeatmapCell cell, CellBounds bounds) => Polygon(
+    points: [
+      LatLng(bounds.latMax, bounds.lngMin),
+      LatLng(bounds.latMax, bounds.lngMax),
+      LatLng(bounds.latMin, bounds.lngMax),
+      LatLng(bounds.latMin, bounds.lngMin),
+    ],
+    color: cell.color.withValues(alpha: _fillOpacity(cell.status)),
+    borderColor: cell.needsRecheck
+        ? cell.color.withValues(alpha: 0.9)
+        : Colors.transparent,
+    borderStrokeWidth: cell.needsRecheck ? 1.2 : 0,
+  );
 
-  final Map<String, HeatmapCell> cells;
-  final Map<String, CellBounds> gridDef;
-  final MapCamera camera;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (final entry in cells.entries) {
-      final bounds = gridDef[entry.key];
-      if (bounds == null) continue;
-      final cell = entry.value;
-
-      // getOffsetFromOrigin() gives layer-space coordinates for widgets
-      // that live inside FlutterMap's children — screen-space APIs give
-      // the wrong offset here.
-      final nw = camera.getOffsetFromOrigin(bounds.northWest);
-      final se = camera.getOffsetFromOrigin(bounds.southEast);
-      final rect = Rect.fromPoints(nw, se);
-      final opacity = switch (cell.status) {
-        SearchAreaStatus.unscanned => 0.12,
-        SearchAreaStatus.scanning => 0.42,
-        SearchAreaStatus.needsRecheck => 0.68,
-      };
-
-      canvas.drawRect(
-        rect,
-        Paint()..color = cell.color.withValues(alpha: opacity),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_HeatmapPainter oldDelegate) =>
-      oldDelegate.cells != cells || oldDelegate.camera != camera;
+  double _fillOpacity(SearchAreaStatus status) => switch (status) {
+    SearchAreaStatus.unscanned => 0.08,
+    SearchAreaStatus.scanning => 0.35,
+    SearchAreaStatus.needsRecheck => 0.62,
+  };
 }

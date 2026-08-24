@@ -53,10 +53,24 @@ class Settings:
 
     dry_run: bool = get_bool_env("DRY_RUN", False)
 
-    # fpga: wait for the FPGA interrupt hook / rss_threshold: gateway decides from RSS itself
+    # Real signal_pipeline mode always consumes the FPGA's detected flag.
+    # rss_threshold exists only for the all-mock demonstration mode.
     detection_mode: str = os.getenv("DETECTION_MODE", "fpga")
     rss_detection_threshold: float = float(os.getenv("RSS_DETECTION_THRESHOLD", "-45.0"))
     detection_cooldown_sec: float = float(os.getenv("DETECTION_COOLDOWN_SEC", "60"))
+    mock_camera_arm_threshold: float = float(
+        os.getenv("MOCK_CAMERA_ARM_THRESHOLD", "-55.0")
+    )
+
+    camera_enabled: bool = get_bool_env("CAMERA_ENABLED", False)
+    camera_hold_seconds: float = float(os.getenv("CAMERA_HOLD_SECONDS", "20"))
+    camera_width: int = int(os.getenv("CAMERA_WIDTH", "854"))
+    camera_height: int = int(os.getenv("CAMERA_HEIGHT", "480"))
+    camera_fps: int = int(os.getenv("CAMERA_FPS", "10"))
+    camera_bitrate: int = int(os.getenv("CAMERA_BITRATE", "800000"))
+    camera_rtsp_url: str = os.getenv(
+        "CAMERA_RTSP_URL", "rtsp://127.0.0.1:8554/drone"
+    )
 
 
 settings = Settings()

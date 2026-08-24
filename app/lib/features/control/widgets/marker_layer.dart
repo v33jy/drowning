@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/severity.dart';
 import '../../../models/drone_state.dart';
 import '../providers/drones_provider.dart';
@@ -51,8 +50,8 @@ class DroneMarkerLayer extends ConsumerWidget {
           Marker(
             key: ValueKey(d.droneId),
             point: d.position,
-            width: 48 * markerScale,
-            height: 48 * markerScale,
+            width: 36 * markerScale,
+            height: 36 * markerScale,
             child: Transform.scale(
               scale: markerScale,
               child: _DroneMarkerIcon(drone: d),
@@ -70,27 +69,6 @@ class _DroneMarkerIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = droneSeverity(drone).resolve(context);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        DroneIcon(color: color, size: 28),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Text(
-            '#${drone.droneId}',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-      ],
-    );
+    return DroneIcon(color: color, size: 30);
   }
 }

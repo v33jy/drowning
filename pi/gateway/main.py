@@ -4,6 +4,7 @@ import time
 from collections.abc import Iterator
 from typing import Optional
 
+from camera_controller import CameraController, H264RtspPublisher
 from client import GatewayClient, extract_drone_id
 from config import settings
 from mavlink_telemetry import (
@@ -38,6 +39,8 @@ def _build_mock_observation(
         battery=battery,
         signal_measured_at=measured_at,
         position_measured_at=measured_at,
+        camera_arm=rssi >= settings.mock_camera_arm_threshold,
+        detected=rssi >= settings.rss_detection_threshold,
     )
 
 
@@ -95,6 +98,8 @@ def generate_signal_measurements() -> Iterator[SignalMeasurement]:
             yield SignalMeasurement(
                 rss_dbm=result.rss_dbm,
                 measured_at=time.time(),
+                camera_arm=result.camera_arm,
+                detected=result.detected,
             )
             time.sleep(settings.send_interval)
     finally:
@@ -120,25 +125,6 @@ def get_measurement_source(
     )
 
 
-def uses_rss_detection() -> bool:
-    return (
-        settings.detection_mode.lower() == "rss_threshold"
-        or settings.input_mode.lower() == _SIGNAL_PIPELINE_MODE
-    )
-
-
-def check_fpga_detection() -> Optional[tuple[int, float]]:
-    """The original design has the FPGA fire a hardware interrupt when it
-    identifies a survivor signal (see server/routers/detection.py). Whether
-    that arrives as a special UART packet, a GPIO interrupt, or something
-    else is not settled with the FPGA side yet, so this is just a placeholder.
-
-    Once the FPGA interface is defined, read that signal here and return
-    (drone_id, rss_dbm).
-    """
-    return None
-
-
 def _try_send_detection(
     client: GatewayClient,
     drone_id: int,
@@ -158,27 +144,39 @@ def _try_send_detection(
     client.send_detection(drone_id, cell_id, rss_dbm)
 
 
-class RssThresholdDetector:
-    """RSS-threshold detection — a fallback until the FPGA path is ready.
+class DetectionCooldown:
+    """Rate-limit already-approved detections without re-evaluating them."""
 
-    Won't re-trigger for the same drone until the cooldown elapses.
-    """
-
-    def __init__(self, threshold: float, cooldown_sec: float) -> None:
-        self.threshold = threshold
+    def __init__(self, cooldown_sec: float) -> None:
         self.cooldown_sec = cooldown_sec
         self._last_triggered: dict[int, float] = {}
 
-    def check(self, drone_id: int, rss_dbm: float) -> bool:
-        if rss_dbm < self.threshold:
+    def allow(
+        self,
+        drone_id: int,
+        requested: bool,
+        now: float | None = None,
+    ) -> bool:
+        if not requested:
             return False
 
-        last = self._last_triggered.get(drone_id, 0.0)
-        if time.time() - last < self.cooldown_sec:
+        timestamp = time.time() if now is None else now
+        last = self._last_triggered.get(drone_id)
+        if last is not None and timestamp - last < self.cooldown_sec:
             return False
 
-        self._last_triggered[drone_id] = time.time()
+        self._last_triggered[drone_id] = timestamp
         return True
+
+
+def detection_requested(observation: SignalObservation) -> bool:
+    """Use FPGA decisions in hardware mode and RSS only in mock mode."""
+    if settings.input_mode.lower() == _SIGNAL_PIPELINE_MODE:
+        return observation.detected
+    return (
+        settings.detection_mode.lower() == "rss_threshold"
+        and observation.rss_dbm >= settings.rss_detection_threshold
+    )
 
 
 def main() -> None:
@@ -204,9 +202,13 @@ def main() -> None:
         max_retries=settings.max_retries,
         dry_run=settings.dry_run
     )
+    camera = CameraController(
+        publisher=H264RtspPublisher.from_settings(settings),
+        enabled=settings.camera_enabled,
+        hold_seconds=settings.camera_hold_seconds,
+    )
 
-    rss_detector = RssThresholdDetector(
-        threshold=settings.rss_detection_threshold,
+    detection_cooldown = DetectionCooldown(
         cooldown_sec=settings.detection_cooldown_sec,
     )
 
@@ -268,6 +270,10 @@ def main() -> None:
             drone_id = extract_drone_id(observation.drone_id)
             cell_id = response.get("cell_id")
             rssi = observation.rss_dbm
+            camera.update(
+                camera_arm=observation.camera_arm,
+                detected=observation.detected,
+            )
 
             client.send_signal(
                 drone_id,
@@ -278,19 +284,11 @@ def main() -> None:
                 measured_at=observation.signal_measured_at,
             )
 
-            if uses_rss_detection():
-                if rss_detector.check(drone_id, rssi):
-                    _try_send_detection(client, drone_id, cell_id, rssi)
-            else:
-                detected = check_fpga_detection()
-                if detected is not None:
-                    fpga_drone_id, fpga_rss = detected
-                    _try_send_detection(
-                        client,
-                        fpga_drone_id,
-                        cell_id,
-                        fpga_rss
-                    )
+            if detection_cooldown.allow(
+                drone_id,
+                detection_requested(observation),
+            ):
+                _try_send_detection(client, drone_id, cell_id, rssi)
 
     except KeyboardInterrupt:
         print("\n[stopped] interrupted by user.")
@@ -308,6 +306,7 @@ def main() -> None:
                 close()
 
         client.close()
+        camera.close()
         print("[stopped] gateway connections closed.")
 
 

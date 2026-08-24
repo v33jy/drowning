@@ -6,11 +6,11 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/severity.dart';
 import '../../../core/widgets/status_chip.dart';
-import '../../../core/widgets/video_thumbnail.dart';
+import '../../../core/widgets/webrtc_video_view.dart';
+import '../../../config.dart';
 import '../../../models/drone_state.dart';
 import '../providers/drones_provider.dart';
 import '../providers/heatmap_provider.dart';
-import '../providers/video_frame_provider.dart';
 import 'drone_icon.dart';
 import 'marker_layer.dart';
 
@@ -106,9 +106,6 @@ class _SingleDronePanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final severity = droneSeverity(drone);
-    final frameB64 = ref.watch(
-      videoFrameProvider.select((frames) => frames[drone.droneId]),
-    );
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -127,7 +124,7 @@ class _SingleDronePanel extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '운용 드론 #${drone.droneId}',
+                        '운용 드론',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       Text(
@@ -159,7 +156,7 @@ class _SingleDronePanel extends ConsumerWidget {
                     children: [
                       _DroneMetrics(drone: drone, rssDbm: rssDbm),
                       const SizedBox(height: AppSpacing.sm),
-                      VideoThumbnail(frameB64: frameB64),
+                      WebRtcVideoView(whepUrl: Config.videoWhepUrl),
                     ],
                   ),
                 )

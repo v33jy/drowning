@@ -57,6 +57,7 @@ class MockFpgaTransportTests(unittest.TestCase):
         self.assertEqual(result.sequence, frame.sequence)
         self.assertEqual(result.peak_bin, 128)
         self.assertTrue(result.detected)
+        self.assertTrue(result.camera_arm)
 
     def test_does_not_detect_tone_off_target_bin(self) -> None:
         # target_bin(128)/interference_bin(310) 대역 밖의 신호는
@@ -144,6 +145,7 @@ class SpiFpgaTransportTests(unittest.TestCase):
             noise_floor=10.0,
             rss_dbm=-18.5,
             detected=True,
+            camera_arm=True,
         )
         result_packet = encode_fpga_result(expected)
 
@@ -165,6 +167,7 @@ class SpiFpgaTransportTests(unittest.TestCase):
         self.assertEqual(result.sequence, expected.sequence)
         self.assertEqual(result.peak_bin, expected.peak_bin)
         self.assertTrue(result.detected)
+        self.assertTrue(result.camera_arm)
 
     def test_rejects_out_of_range_result_bin(self) -> None:
         valid = encode_fpga_result(

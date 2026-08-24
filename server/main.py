@@ -15,7 +15,6 @@ init          — full state snapshot sent immediately on connection
 drone_update  — single drone's telemetry changed
 heatmap_update — full heatmap after any RSS reading
 detection     — survivor detected; includes detection_id identifying the entry
-video_frame   — live camera frame; sampled history is kept around RSS recheck events
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import call, detection, drones, meta, signals, video, websocket
+from routers import call, detection, drones, meta, signals, websocket
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
 
@@ -45,7 +44,6 @@ app.add_middleware(
 app.include_router(drones.router)
 app.include_router(signals.router)
 app.include_router(detection.router)
-app.include_router(video.router)
 app.include_router(call.router)
 app.include_router(meta.router)
 app.include_router(websocket.router)

@@ -38,7 +38,7 @@ void main() {
     });
     await tester.pump();
 
-    expect(find.text('운용 드론 #1'), findsOneWidget);
+    expect(find.text('운용 드론'), findsOneWidget);
     expect(find.textContaining('배터리 84%'), findsOneWidget);
     expect(find.text('드론 1대'), findsNothing);
   });

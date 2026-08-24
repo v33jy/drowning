@@ -1,26 +1,34 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/widgets/liquid_page_components.dart';
+import '../../detection/providers/detection_log_provider.dart';
+import '../operational_section.dart';
+import 'operation_header.dart';
 
-class HelpScreen extends StatefulWidget {
-  const HelpScreen({super.key});
+class HelpScreen extends ConsumerStatefulWidget {
+  const HelpScreen({
+    required this.onNavigate,
+    required this.onQueueTap,
+    super.key,
+  });
+
+  final ValueChanged<OperationalSection> onNavigate;
+  final VoidCallback onQueueTap;
 
   @override
-  State<HelpScreen> createState() => _HelpScreenState();
+  ConsumerState<HelpScreen> createState() => _HelpScreenState();
 }
 
-class _HelpScreenState extends State<HelpScreen>
+class _HelpScreenState extends ConsumerState<HelpScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
-  static const _tabs = [
-    _HelpTab(Icons.radar_rounded, '탐지 대응'),
-    _HelpTab(Icons.history_rounded, '기록'),
-    _HelpTab(Icons.build_circle_outlined, '문제 해결'),
-  ];
+  static const _tabs = [_HelpTab('탐지 대응'), _HelpTab('기록'), _HelpTab('문제 해결')];
 
   @override
   void initState() {
@@ -38,70 +46,94 @@ class _HelpScreenState extends State<HelpScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF2F6FA),
-      appBar: AppBar(
-        title: const Text('도움말'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(
-            height: 1,
-            color: Colors.white.withValues(alpha: .16),
-          ),
-        ),
-      ),
-      body: Stack(
-        children: [
-          const Positioned.fill(child: _Background()),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final horizontal = constraints.maxWidth >= 1200
-                  ? 48.0
-                  : constraints.maxWidth >= 700
-                  ? 28.0
-                  : 16.0;
-              return SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(horizontal, 28, horizontal, 48),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1120),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const _MissionSummary(),
-                        const SizedBox(height: AppSpacing.lg),
-                        _GlassPanel(
-                          padding: EdgeInsets.zero,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _HelpTabBar(
-                                controller: _tabController,
-                                tabs: _tabs,
-                              ),
-                              Container(
-                                height: 1,
-                                color: AppColors.border.withValues(alpha: .7),
-                              ),
-                              AnimatedBuilder(
-                                animation: _tabController,
-                                builder: (context, _) => AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 180),
-                                  child: KeyedSubtree(
-                                    key: ValueKey(_tabController.index),
-                                    child: _tabContent(_tabController.index),
+      body: SafeArea(
+        child: Column(
+          children: [
+            OperationHeader(
+              queueCount: ref.watch(
+                pendingDetectionQueueProvider.select((q) => q.length),
+              ),
+              onHomeTap: () => widget.onNavigate(OperationalSection.control),
+              onQueueTap: widget.onQueueTap,
+              onLogTap: () => widget.onNavigate(OperationalSection.log),
+              onHelpTap: () {},
+              onSettingsTap: () =>
+                  widget.onNavigate(OperationalSection.settings),
+            ),
+            Expanded(
+              child: Stack(
+                children: [
+                  const Positioned.fill(child: LiquidPageBackdrop()),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final horizontal = constraints.maxWidth >= 1200
+                          ? 48.0
+                          : constraints.maxWidth >= 700
+                          ? 28.0
+                          : 16.0;
+                      return SingleChildScrollView(
+                        padding: EdgeInsets.fromLTRB(
+                          horizontal,
+                          28,
+                          horizontal,
+                          48,
+                        ),
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 1120),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const _MissionSummary(),
+                                const SizedBox(height: AppSpacing.lg),
+                                _GlassPanel(
+                                  padding: EdgeInsets.zero,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      _HelpTabBar(
+                                        controller: _tabController,
+                                        tabs: _tabs,
+                                      ),
+                                      Container(
+                                        height: 1,
+                                        color: AppColors.border.withValues(
+                                          alpha: .7,
+                                        ),
+                                      ),
+                                      AnimatedBuilder(
+                                        animation: _tabController,
+                                        builder: (context, _) =>
+                                            AnimatedSwitcher(
+                                              duration: const Duration(
+                                                milliseconds: 180,
+                                              ),
+                                              child: KeyedSubtree(
+                                                key: ValueKey(
+                                                  _tabController.index,
+                                                ),
+                                                child: _tabContent(
+                                                  _tabController.index,
+                                                ),
+                                              ),
+                                            ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
-                ),
-              );
-            },
-          ),
-        ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -142,18 +174,19 @@ class _HelpScreenState extends State<HelpScreen>
       sections: [
         _GuideSection(
           icon: Icons.manage_search_rounded,
-          title: '기록 찾기',
+          title: '기록 현황과 검색',
           items: [
-            _GuideItem('상단 기록 메뉴', '탐지·구조·오탐·통화 이력을 한곳에서 확인합니다.'),
-            _GuideItem('시간과 상태', '발생 시각과 최종 처리 상태를 함께 비교합니다.'),
+            _GuideItem('현황 요약', '오늘 기록·재확인·탐지·장비 경고 건수를 먼저 확인합니다.'),
+            _GuideItem('검색과 필터', '구역 또는 활동을 검색하고 기간·처리 상태로 기록을 좁힙니다.'),
           ],
         ),
         _GuideSection(
           icon: Icons.near_me_rounded,
-          title: '기록에서 다시 확인',
+          title: '기록 판단과 위치 확인',
           items: [
-            _GuideItem('위치로 이동', '기록의 위치를 선택하면 관제 지도가 해당 구역으로 이동합니다.'),
-            _GuideItem('영상 재확인', '필요한 시점의 영상을 열어 현장 상황과 처리 결과를 검토합니다.'),
+            _GuideItem('판단 내용', '상태·위치와 함께 시스템이 해당 기록으로 분류한 이유를 확인합니다.'),
+            _GuideItem('발생 시각', '정확한 발생 시각과 경과 시간을 함께 비교합니다.'),
+            _GuideItem('탐지 위치', '탐지 기록의 지도 아이콘을 누르면 관제 지도가 해당 구역으로 이동합니다.'),
           ],
         ),
       ],
@@ -193,29 +226,8 @@ class _HelpScreenState extends State<HelpScreen>
 }
 
 class _HelpTab {
-  const _HelpTab(this.icon, this.label);
-  final IconData icon;
+  const _HelpTab(this.label);
   final String label;
-}
-
-class _Background extends StatelessWidget {
-  const _Background();
-
-  @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          AppColors.navy.withValues(alpha: .10),
-          const Color(0xFFF2F6FA),
-          const Color(0xFFF8FAFC),
-        ],
-        stops: const [0, .32, 1],
-      ),
-    ),
-  );
 }
 
 class _MissionSummary extends StatelessWidget {
@@ -377,15 +389,7 @@ class _HelpTabBar extends StatelessWidget {
       ),
       padding: const EdgeInsets.only(bottom: 12),
       labelPadding: const EdgeInsets.symmetric(horizontal: 18),
-      tabs: [
-        for (final tab in tabs)
-          Tab(
-            height: 44,
-            icon: Icon(tab.icon, size: 19),
-            iconMargin: const EdgeInsets.only(right: 8),
-            child: Text(tab.label),
-          ),
-      ],
+      tabs: [for (final tab in tabs) Tab(height: 44, child: Text(tab.label))],
     ),
   );
 }

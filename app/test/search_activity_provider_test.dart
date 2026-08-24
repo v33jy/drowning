@@ -56,6 +56,14 @@ void main() {
           LogActivityKind.areaNeedsRecheck,
         ]),
       );
+      expect(
+        activities
+            .singleWhere(
+              (entry) => entry.activityKind == LogActivityKind.areaNeedsRecheck,
+            )
+            .explanation,
+        '강한 신호가 반복 관측되어 재수색 대상으로 분류되었습니다.',
+      );
     },
   );
 }

@@ -53,6 +53,7 @@ class FpgaResult:
     noise_floor: float
     rss_dbm: float
     detected: bool
+    camera_arm: bool = False
 
     def __post_init__(self) -> None:
         if self.sequence < 0:

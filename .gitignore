@@ -4,6 +4,11 @@ __pycache__/
 .venv/
 venv/
 
+# Local MediaMTX runtime artifacts
+/auto.crt
+/auto.key
+/server/data/recordings/
+
 # macOS
 .DS_Store
 

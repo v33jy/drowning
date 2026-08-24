@@ -1,0 +1,20 @@
+logLevel: info
+
+rtsp: true
+rtspAddress: :8554
+
+webrtc: true
+webrtcAddress: :8889
+webrtcAllowOrigins: ['*']
+
+pathDefaults:
+  record: true
+  recordPath: ./server/data/recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: fmp4
+  recordPartDuration: 1s
+  recordSegmentDuration: 10s
+  recordDeleteAfter: 24h
+
+paths:
+  drone:
+    source: publisher

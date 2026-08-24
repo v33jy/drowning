@@ -50,6 +50,7 @@ class LogEntry {
     this.status,
     this.activityKind,
     this.callDetails,
+    this.explanation,
   });
 
   final LogEntryType type;
@@ -61,6 +62,7 @@ class LogEntry {
   final DetectionStatus? status;
   final LogActivityKind? activityKind;
   final CallActivityDetails? callDetails;
+  final String? explanation;
 
   /// "조치 필요" 필터에 실제로 의미가 있는 건 탐지뿐이다 — 대기 중이면 조치가
   /// 필요하다는 뜻이고, 처리되면 끝이다. 배터리/신호 경고는 그런 액션 상태가

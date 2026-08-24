@@ -7,6 +7,10 @@ class Config {
     'HTTP_PORT',
     defaultValue: 8000,
   );
+  static const int mediaHttpPort = int.fromEnvironment(
+    'MEDIA_HTTP_PORT',
+    defaultValue: 8889,
+  );
 
   /// Offline showcase build — no server/network calls at all. [WsClient]
   /// replays a canned scenario instead of opening a real socket, and
@@ -26,6 +30,8 @@ class Config {
   );
   static String get baseUrl =>
       _buildUrl(secureScheme: 'https', plainScheme: 'http');
+  static String get videoWhepUrl =>
+      'http://$serverHost:$mediaHttpPort/drone/whep';
 
   /// 443 포트는 Cloudflare Tunnel 같은 TLS 종단을 가리키는 관례로 취급 —
   /// 그 경우 포트를 URL에 안 붙이고 보안 스킴을 쓴다.

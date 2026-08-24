@@ -14,6 +14,7 @@ import '../providers/ws_providers.dart';
 
 class OperationHeader extends ConsumerWidget {
   const OperationHeader({
+    required this.onHomeTap,
     required this.queueCount,
     required this.onQueueTap,
     required this.onLogTap,
@@ -23,6 +24,7 @@ class OperationHeader extends ConsumerWidget {
   });
 
   final int queueCount;
+  final VoidCallback onHomeTap;
   final VoidCallback onQueueTap;
   final VoidCallback onLogTap;
   final VoidCallback onHelpTap;
@@ -60,37 +62,53 @@ class OperationHeader extends ConsumerWidget {
             ),
             child: Row(
               children: [
-                SizedBox(
-                  width: 42,
-                  height: 42,
-                  child: SvgPicture.asset(
-                    'assets/images/drowning-drone-logo.svg',
-                    fit: BoxFit.contain,
-                    semanticsLabel: 'DROWNING 로고',
+                InkWell(
+                  onTap: onHomeTap,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 3,
+                    ),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 42,
+                          height: 42,
+                          child: SvgPicture.asset(
+                            'assets/images/drowning-drone-logo.svg',
+                            fit: BoxFit.contain,
+                            semanticsLabel: 'DROWNING 로고',
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'DROWNING',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: AppColors.navy,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.3,
+                                  ),
+                            ),
+                            Text(
+                              '긴급 구조 통합관제',
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(
+                                    color: AppColors.navy,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1.05,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'DROWNING',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AppColors.navy,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.3,
-                      ),
-                    ),
-                    Text(
-                      '긴급 구조 통합관제',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: AppColors.navy,
-                        fontWeight: FontWeight.w800,
-                        height: 1.05,
-                      ),
-                    ),
-                  ],
                 ),
                 const SizedBox(width: 18),
                 Container(
@@ -140,7 +158,7 @@ class _DroneStatus extends StatelessWidget {
     final activeDrone = drone;
     if (activeDrone == null) return const SizedBox.shrink();
     return Text(
-      '드론 ${activeDrone.droneId} · 배터리 ${activeDrone.batteryLabel} · '
+      '배터리 ${activeDrone.batteryLabel} · '
       '고도 ${activeDrone.altitude.toStringAsFixed(0)}m',
       style: Theme.of(context).textTheme.labelMedium,
     );

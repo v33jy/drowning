@@ -1,5 +1,6 @@
 import 'package:control_app/features/detection/call_controls.dart';
 import 'package:control_app/features/detection/detection_sheet.dart';
+import 'package:control_app/features/detection/providers/detection_log_provider.dart';
 import 'package:control_app/models/detection_event.dart';
 import 'package:control_app/services/call_service.dart';
 import 'package:flutter/material.dart';
@@ -69,6 +70,24 @@ void main() {
     expect(find.text('오탐 처리'), findsOneWidget);
     expect(find.text('구조 완료'), findsOneWidget);
     expect(find.text('전화 연결'), findsOneWidget);
+  });
+
+  testWidgets('처리 완료 기록은 판단 결과만 읽기 전용으로 표시한다', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: DetectionSheet(event: event, status: DetectionStatus.rescued),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('처리가 완료된 기록입니다.'), findsOneWidget);
+    expect(find.text('현장 확인을 거쳐 구조 완료로 처리되었습니다.'), findsOneWidget);
+    expect(find.text('오탐 처리'), findsNothing);
+    expect(find.text('전화 연결'), findsNothing);
   });
 
   testWidgets('오탐 처리는 확인 다이얼로그 없이 바로 처리되지 않는다', (tester) async {
