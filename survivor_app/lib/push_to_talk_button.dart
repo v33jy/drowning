@@ -50,27 +50,57 @@ class _SurvivorPushToTalkButtonState extends State<SurvivorPushToTalkButton> {
         onLongPressCancel: _stopTransmitting,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           decoration: BoxDecoration(
-            color: widget.isTransmitting
-                ? Theme.of(context).colorScheme.error
-                : Theme.of(context).colorScheme.primary,
-            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: widget.isTransmitting
+                  ? const [Color(0xFFFF6070), Color(0xFFC9263A)]
+                  : const [Color(0xFF3479DA), Color(0xFF123D8E)],
+            ),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.32)),
+            boxShadow: [
+              BoxShadow(
+                color:
+                    (widget.isTransmitting
+                            ? const Color(0xFFC9263A)
+                            : const Color(0xFF164194))
+                        .withValues(alpha: 0.28),
+                blurRadius: 22,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                widget.isTransmitting ? Icons.mic : Icons.mic_off,
-                color: Colors.white,
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  widget.isTransmitting
+                      ? Icons.mic_rounded
+                      : Icons.mic_none_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Flexible(
                 child: Text(
                   label,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
                   ),
                 ),
               ),

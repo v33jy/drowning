@@ -5,7 +5,7 @@ class Config {
   );
   static const int httpPort = int.fromEnvironment(
     'HTTP_PORT',
-    defaultValue: 8000,
+    defaultValue: 8001,
   );
   static const int mediaHttpPort = int.fromEnvironment(
     'MEDIA_HTTP_PORT',

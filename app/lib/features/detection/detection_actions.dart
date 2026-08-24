@@ -23,8 +23,6 @@ class DetectionActions extends ConsumerStatefulWidget {
 }
 
 class _DetectionActionsState extends ConsumerState<DetectionActions> {
-  bool _pushToTalk = false;
-
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(callServiceProvider);
@@ -173,19 +171,16 @@ class _DetectionActionsState extends ConsumerState<DetectionActions> {
             icon: Icon(Icons.touch_app_rounded, size: 17),
           ),
         ],
-        selected: {_pushToTalk},
+        selected: {state.audioMode == CallAudioMode.pushToTalk},
         onSelectionChanged: (selection) {
-          setState(() => _pushToTalk = selection.first);
-          if (_pushToTalk) {
-            service.stopTransmitting();
-          } else {
-            service.startTransmitting();
-          }
+          service.setAudioMode(
+            selection.first ? CallAudioMode.pushToTalk : CallAudioMode.call,
+          );
         },
         showSelectedIcon: false,
       ),
       const SizedBox(height: AppSpacing.sm),
-      if (!_pushToTalk)
+      if (state.audioMode == CallAudioMode.call)
         Container(
           key: const Key('continuous-voice-active'),
           height: 48,
