@@ -37,8 +37,9 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
           _append(
             LogActivityKind.areaNeedsRecheck,
             entry.value.droneId ?? _currentDroneId,
-            '재확인 필요 — ${_locationLabel(entry.key)}',
+            '재확인 필요 - ${_locationLabel(entry.key)}',
             Severity.warning,
+            explanation: '강한 신호가 반복 관측되어 재수색 대상으로 분류되었습니다.',
           );
         }
       }
@@ -69,7 +70,7 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
           _append(
             LogActivityKind.detectionResolved,
             entry.event.droneId,
-            '$label — ${_locationLabel(entry.event.cellId)}',
+            '$label - ${_locationLabel(entry.event.cellId)}',
             entry.status == DetectionStatus.rescued
                 ? Severity.ok
                 : Severity.offline,
@@ -88,7 +89,7 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
     _append(
       LogActivityKind.searchStarted,
       drone.droneId,
-      '수색 시작 — 운용 시작',
+      '수색 시작 - 운용 시작',
       Severity.ok,
     );
   }
@@ -115,8 +116,9 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
     LogActivityKind kind,
     int droneId,
     String title,
-    Severity severity,
-  ) {
+    Severity severity, {
+    String? explanation,
+  }) {
     state = [
       ...state,
       LogEntry(
@@ -126,6 +128,7 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
         timestamp: DateTime.now(),
         title: title,
         severity: severity,
+        explanation: explanation,
       ),
     ];
   }

@@ -120,8 +120,8 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
     );
     final elapsed = _elapsedLabel(event.timestamp);
     final videoHeight = math.min(
-      340.0,
-      MediaQuery.sizeOf(context).height * 0.46,
+      260.0,
+      MediaQuery.sizeOf(context).height * 0.34,
     );
 
     return SingleChildScrollView(

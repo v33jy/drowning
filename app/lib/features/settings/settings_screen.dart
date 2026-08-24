@@ -5,11 +5,21 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/connection_badge.dart';
 import '../../core/widgets/liquid_page_components.dart';
+import '../control/operational_section.dart';
 import '../control/providers/ws_providers.dart';
+import '../control/widgets/operation_header.dart';
+import '../detection/providers/detection_log_provider.dart';
 
 /// 현장에서 확인할 필요가 있는 최소한의 관제 상태만 보여준다.
 class SettingsScreen extends ConsumerWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({
+    required this.onNavigate,
+    required this.onQueueTap,
+    super.key,
+  });
+
+  final ValueChanged<OperationalSection> onNavigate;
+  final VoidCallback onQueueTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -25,7 +35,16 @@ class SettingsScreen extends ConsumerWidget {
           SafeArea(
             child: Column(
               children: [
-                const NavyPageHeader(title: '설정'),
+                OperationHeader(
+                  queueCount: ref.watch(
+                    pendingDetectionQueueProvider.select((q) => q.length),
+                  ),
+                  onHomeTap: () => onNavigate(OperationalSection.control),
+                  onQueueTap: onQueueTap,
+                  onLogTap: () => onNavigate(OperationalSection.log),
+                  onHelpTap: () => onNavigate(OperationalSection.help),
+                  onSettingsTap: () {},
+                ),
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(24, 22, 24, 32),
