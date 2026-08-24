@@ -49,11 +49,13 @@ class DetectionSheet extends ConsumerStatefulWidget {
     required this.event,
     this.onOutcome,
     this.showCloseButton = true,
+    this.status = DetectionStatus.pending,
   });
 
   final DetectionEvent event;
   final ValueChanged<DetectionOutcome>? onOutcome;
   final bool showCloseButton;
+  final DetectionStatus status;
 
   @override
   ConsumerState<DetectionSheet> createState() => _DetectionSheetState();
@@ -119,6 +121,17 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
       grid: ref.watch(gridDefProvider),
     );
     final elapsed = _elapsedLabel(event.timestamp);
+    final readOnly = widget.status != DetectionStatus.pending;
+    final statusLabel = switch (widget.status) {
+      DetectionStatus.pending => '재확인 필요',
+      DetectionStatus.rescued => '구조 완료',
+      DetectionStatus.falseAlarm => '오탐 처리',
+    };
+    final statusColor = switch (widget.status) {
+      DetectionStatus.pending => AppColors.warning,
+      DetectionStatus.rescued => AppColors.success,
+      DetectionStatus.falseAlarm => AppColors.textSecondary,
+    };
     final videoHeight = math.min(
       260.0,
       MediaQuery.sizeOf(context).height * 0.34,
@@ -130,8 +143,8 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
         mainAxisSize: MainAxisSize.min,
         children: [
           SearchStatusHeader(
-            status: '재확인 필요',
-            statusColor: AppColors.warning,
+            status: statusLabel,
+            statusColor: statusColor,
             locationLabel: locationLabel,
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -147,20 +160,25 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
             ),
           ),
           const SizedBox(height: AppSpacing.md),
-          const SearchActionSummary(
-            action: '해당 위치를 저고도로 다시 통과하세요.',
-            reason: '같은 위치에서 신호가 반복되어 추가 확인이 필요합니다.',
+          SearchActionSummary(
+            action: readOnly ? '처리가 완료된 기록입니다.' : '해당 위치를 저고도로 다시 통과하세요.',
+            reason: switch (widget.status) {
+              DetectionStatus.pending => '같은 위치에서 신호가 반복되어 추가 확인이 필요합니다.',
+              DetectionStatus.rescued => '현장 확인을 거쳐 구조 완료로 처리되었습니다.',
+              DetectionStatus.falseAlarm => '현장 확인 결과 오탐으로 처리되었습니다.',
+            },
           ),
           const SizedBox(height: AppSpacing.lg),
           Text('현장 영상', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: AppSpacing.sm),
           WebRtcVideoView(whepUrl: event.streamUrl, height: videoHeight),
           const SizedBox(height: AppSpacing.md),
-          DetectionActions(
-            callSessionId: event.callSessionId,
-            onFalseAlarm: _confirmFalseAlarm,
-            onRescued: () => _resolve(DetectionOutcome.rescued),
-          ),
+          if (!readOnly)
+            DetectionActions(
+              callSessionId: event.callSessionId,
+              onFalseAlarm: _confirmFalseAlarm,
+              onRescued: () => _resolve(DetectionOutcome.rescued),
+            ),
         ],
       ),
     );

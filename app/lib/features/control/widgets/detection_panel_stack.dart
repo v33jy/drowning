@@ -5,6 +5,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../models/detection_event.dart';
 import '../../../models/grid_cell.dart';
 import '../../detection/detection_sheet.dart';
+import '../../detection/providers/detection_log_provider.dart';
 import '../providers/grid_provider.dart';
 import 'floating_map_panel.dart';
 
@@ -12,6 +13,7 @@ class DetectionPanelStack extends StatelessWidget {
   const DetectionPanelStack({
     required this.maxHeight,
     required this.activeDetection,
+    required this.activeDetectionStatus,
     required this.pendingDetections,
     required this.locationLabels,
     required this.gridDefinition,
@@ -25,6 +27,7 @@ class DetectionPanelStack extends StatelessWidget {
 
   final double maxHeight;
   final DetectionEvent activeDetection;
+  final DetectionStatus activeDetectionStatus;
   final List<DetectionEvent> pendingDetections;
   final Map<String, String> locationLabels;
   final Map<String, CellBounds> gridDefinition;
@@ -46,8 +49,9 @@ class DetectionPanelStack extends StatelessWidget {
           maxHeight: maxHeight - previous.length * _noticeSlotHeight,
           onResize: onResize,
           child: DetectionSheet(
-            key: ValueKey(activeDetection.detectionId),
+            key: ValueKey((activeDetection.detectionId, activeDetectionStatus)),
             event: activeDetection,
+            status: activeDetectionStatus,
             showCloseButton: true,
             onOutcome: onOutcome,
           ),

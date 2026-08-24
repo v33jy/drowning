@@ -78,6 +78,15 @@ Raspberry Pi Camera
 mediamtx mediamtx.yml
 ```
 
+기본적으로 서버는 탐지 요청을 받은 API 서버의 호스트와 `8889` 포트를 조합해 관제
+단말에서 접근 가능한 WHEP URL을 생성합니다. MediaMTX가 별도 장비나 포트에서 실행되면
+서버 실행 전에 `MEDIAMTX_WHEP_URL`을 관제 단말에서 접근 가능한 전체 URL로 지정합니다.
+
+```bash
+MEDIAMTX_WHEP_URL=http://192.168.0.30:8889/drone/whep \
+python3 -m uvicorn main:app --host 0.0.0.0 --port 8001
+```
+
 ### 4. 요구조자 앱과 음성 통화
 
 탐지가 발생하면 서버가 탐지별 통화 세션을 만들고 대기 중인 요구조자 앱에 수신 이벤트를

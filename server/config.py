@@ -77,6 +77,7 @@ MAX_SIGNAL_READINGS: int = max(
     1, int(os.getenv("MAX_SIGNAL_READINGS", "10000"))
 )
 
-MEDIAMTX_WHEP_URL: str = os.getenv(
-    "MEDIAMTX_WHEP_URL", "http://localhost:8889/drone/whep"
-)
+# Set this when MediaMTX is not hosted alongside the API server. When omitted,
+# the detection endpoint derives a client-reachable URL from the request host.
+MEDIAMTX_WHEP_URL: str | None = os.getenv("MEDIAMTX_WHEP_URL")
+MEDIAMTX_WHEP_PORT: int = int(os.getenv("MEDIAMTX_WHEP_PORT", "8889"))

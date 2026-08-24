@@ -783,7 +783,8 @@ class _LogTile extends ConsumerWidget {
         (bounds.lngMin + bounds.lngMax) / 2,
       );
     }
-    ref.read(detectionFocusRequestProvider.notifier).state = event;
+    ref.read(detectionFocusRequestProvider.notifier).state =
+        DetectionFocusRequest(event: event, status: entry.status!);
     Navigator.of(context).pop();
   }
 }

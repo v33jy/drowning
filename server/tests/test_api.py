@@ -186,6 +186,31 @@ class DetectionTests(ApiTestCase):
         self.assertIn("call_session_id", listed[0])
         self.assertIn(listed[0]["call_session_id"], state.call_sessions)
 
+    def test_default_stream_url_uses_api_request_host(self):
+        event = {"drone_id": 1, "cell_id": "A0", "rss_dbm": -55.0}
+        response = self.client.post(
+            "/detection",
+            json=event,
+            headers={"host": "192.168.0.20:8001"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            state.detections[-1]["stream_url"],
+            f"http://192.168.0.20:{config.MEDIAMTX_WHEP_PORT}/drone/whep",
+        )
+
+    def test_detection_stream_url_takes_precedence(self):
+        stream_url = "http://media.local:8889/custom/whep"
+        event = {
+            "drone_id": 1,
+            "cell_id": "A0",
+            "rss_dbm": -55.0,
+            "stream_url": stream_url,
+        }
+        response = self.client.post("/detection", json=event)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(state.detections[-1]["stream_url"], stream_url)
+
 
 class MetaTests(ApiTestCase):
     def test_health(self):

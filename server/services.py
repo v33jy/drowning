@@ -137,12 +137,16 @@ async def submit_signal(drone_id: int, reading: SignalReading) -> dict:
     return measurement
 
 
-async def report_detection(event: DetectionEvent) -> dict:
+async def report_detection(event: DetectionEvent, default_stream_url: str) -> dict:
     """Record a survivor detection, tagged with a unique detection_id."""
     call_session_id = str(uuid.uuid4())
     entry = {
         **event.model_dump(),
-        "stream_url": event.stream_url or config.MEDIAMTX_WHEP_URL,
+        "stream_url": (
+            event.stream_url
+            or config.MEDIAMTX_WHEP_URL
+            or default_stream_url
+        ),
         "timestamp": time.time(),
         "detection_id": str(uuid.uuid4()),
         "call_session_id": call_session_id,
