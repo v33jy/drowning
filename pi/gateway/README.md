@@ -9,6 +9,7 @@ H743와 SDR/FPGA에서 데이터를 수신하고, FastAPI 서버(`/drones/{id}/t
   `DETECTION_MODE=rss_threshold` 탐지 트리거까지 확인 가능
 - RTL-SDR IQ 수신 및 FPGA SPI 전송 파이프라인
 - H743 MAVLink GPS·고도·배터리를 SDR/FPGA RSS 측정과 결합
+- 드론 Heltec LoRa&ESP32의 RSSI/SNR 직렬 출력을 읽어 MAVLink GPS와 결합
 - SDR과 FPGA를 각각 mock 또는 실제 장치로 선택 가능
 - MAVLink 연결이 끊기면 자동 재연결
 - 텔레메트리·신호세기 서버 전송, 실패 시 자동 재시도
@@ -35,6 +36,11 @@ INPUT_MODE=signal_pipeline SDR_MODE=real FPGA_MODE=real \
 INPUT_MODE=signal_pipeline SDR_MODE=mock FPGA_MODE=mock \
   FC_SERIAL_PORT=/dev/serial0 FC_BAUD_RATE=115200 \
   CAMERA_ENABLED=false python3 main.py
+
+# 현재 프로젝트 장비: 드론 Heltec RSSI + H743 GPS
+INPUT_MODE=lora_serial LORA_SERIAL_PORT=/dev/ttyUSB0 \
+  FC_SERIAL_PORT=/dev/serial0 SERVER_URL=http://SERVER_IP:8001 \
+  python3 main.py
 ```
 
 ## 환경변수
@@ -43,7 +49,9 @@ INPUT_MODE=signal_pipeline SDR_MODE=mock FPGA_MODE=mock \
 |---|---|---|
 | `GATEWAY_ID` | `gateway-01` | 게이트웨이 식별 이름 |
 | `DRONE_ID` | `drone-01` | 서버에 전송할 드론 식별자 |
-| `INPUT_MODE` | `mock` | `mock` / `signal_pipeline` |
+| `INPUT_MODE` | `mock` | `mock` / `signal_pipeline` / `lora_serial` |
+| `LORA_SERIAL_PORT` | `/dev/ttyUSB0` | 드론 Heltec ESP32 직렬 포트 |
+| `LORA_SERIAL_BAUD_RATE` | `115200` | Heltec 직렬 속도 |
 | `SDR_MODE` | `mock` | `mock` / `real` |
 | `SDR_SAMPLE_RATE_HZ` | `2400000` | RTL-SDR sample rate(Hz) |
 | `SDR_CENTER_FREQUENCY_HZ` | `915000000` | RTL-SDR 중심 주파수(Hz) |

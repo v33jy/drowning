@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -35,6 +35,14 @@ class DetectionEvent(BaseModel):
     cell_id: str
     rss_dbm: float
     stream_url: Optional[str] = None
+
+
+class CandidateReview(BaseModel):
+    outcome: Literal["false_alarm", "survivor_confirmed"]
+
+
+class CandidateRouteRequest(BaseModel):
+    drone_id: int
 
 
 # ---------------------------------------------------------------------------

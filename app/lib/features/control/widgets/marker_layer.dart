@@ -68,7 +68,17 @@ class _DroneMarkerIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = droneSeverity(drone).resolve(context);
-    return DroneIcon(color: color, size: 30);
+    final severityColor = droneSeverity(drone).resolve(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: 0.88),
+        border: Border.all(color: severityColor, width: 2.5),
+      ),
+      child: const Padding(
+        padding: EdgeInsets.all(2),
+        child: DroneIcon(color: Colors.black, size: 26),
+      ),
+    );
   }
 }

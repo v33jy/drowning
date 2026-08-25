@@ -7,6 +7,7 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/widgets/liquid_page_components.dart';
 import '../../core/widgets/severity.dart';
 import '../../core/widgets/status_chip.dart';
+import '../../models/search_area_presentation.dart';
 import '../control/providers/grid_provider.dart';
 import '../control/providers/map_focus_provider.dart';
 import '../control/operational_section.dart';
@@ -18,9 +19,9 @@ import 'providers/combined_log_provider.dart';
 enum _StatusFilter { pending, rescued, falseAlarm, alert }
 
 String _statusFilterLabel(_StatusFilter f) => switch (f) {
-  _StatusFilter.pending => '대기',
-  _StatusFilter.rescued => '구조 완료',
-  _StatusFilter.falseAlarm => '오탐',
+  _StatusFilter.pending => SearchAreaCopy.candidateLabel,
+  _StatusFilter.rescued => SearchAreaCopy.survivorFoundLabel,
+  _StatusFilter.falseAlarm => SearchAreaCopy.falseAlarmLabel,
   _StatusFilter.alert => '경고',
 };
 
@@ -855,12 +856,12 @@ String _entryStatusLabel(LogEntry entry) {
   final parts = _titleParts(entry.title);
   if (parts.status.isNotEmpty) return parts.status;
   return switch (entry.type) {
-    LogEntryType.detection => '탐지 발생',
+    LogEntryType.detection => SearchAreaCopy.candidateLabel,
     LogEntryType.batteryLow => '장비 경고',
     LogEntryType.signalLost => '통신 경고',
     LogEntryType.activity => switch (entry.activityKind!) {
       LogActivityKind.searchStarted => '수색 시작',
-      LogActivityKind.areaNeedsRecheck => '재확인 필요',
+      LogActivityKind.areaNeedsRecheck => SearchAreaCopy.candidateLabel,
       LogActivityKind.callConnecting => '통화 연결 중',
       LogActivityKind.callConnected => '통화 연결',
       LogActivityKind.callEnded => '통화 종료',
@@ -885,15 +886,15 @@ String _entryExplanation(LogEntry entry) {
   if (entry.explanation case final explanation?) return explanation;
   return switch (entry.type) {
     LogEntryType.detection => switch (entry.status!) {
-      DetectionStatus.pending => '탐지 신호가 발생해 영상 확인과 현장 판단이 필요합니다.',
-      DetectionStatus.rescued => '현장 확인을 거쳐 구조 완료 상태로 처리되었습니다.',
+      DetectionStatus.pending => '강한 신호가 반복적으로 측정되어 현장 영상 확인이 필요합니다.',
+      DetectionStatus.rescued => SearchAreaCopy.survivorFoundReason,
       DetectionStatus.falseAlarm => '현장 확인 결과 오탐으로 처리되었습니다.',
     },
     LogEntryType.batteryLow => '배터리 잔량이 경고 기준에 도달해 복귀 여부 확인이 필요합니다.',
     LogEntryType.signalLost => '기체 통신이 끊겨 마지막 위치와 연결 상태 확인이 필요합니다.',
     LogEntryType.activity => switch (entry.activityKind!) {
       LogActivityKind.searchStarted => '정상적으로 수색 임무를 시작했습니다.',
-      LogActivityKind.areaNeedsRecheck => '신호 판단 기준을 충족해 재수색 대상으로 분류되었습니다.',
+      LogActivityKind.areaNeedsRecheck => SearchAreaCopy.candidateLogReason,
       LogActivityKind.callConnecting => '요구조자와 음성 연결을 시도하고 있습니다.',
       LogActivityKind.callConnected => '요구조자와 음성 통화가 연결되었습니다.',
       LogActivityKind.callEnded => switch (entry.callDetails?.duration) {
@@ -921,9 +922,9 @@ String _clockLabel(DateTime timestamp) =>
     '${timestamp.second.toString().padLeft(2, '0')}';
 
 String _detectionStatusLabel(DetectionStatus status) => switch (status) {
-  DetectionStatus.pending => '처리 대기',
-  DetectionStatus.rescued => '구조 완료',
-  DetectionStatus.falseAlarm => '오탐',
+  DetectionStatus.pending => SearchAreaCopy.candidateLabel,
+  DetectionStatus.rescued => SearchAreaCopy.survivorFoundLabel,
+  DetectionStatus.falseAlarm => SearchAreaCopy.falseAlarmLabel,
 };
 
 String _detailedTimeLabel(DateTime timestamp) =>

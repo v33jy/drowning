@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../models/heatmap_cell.dart';
+import '../../../models/search_area_presentation.dart';
 
 @immutable
 class SearchAreaGuidance {
@@ -18,6 +19,17 @@ class SearchAreaGuidance {
   final Color color;
 
   factory SearchAreaGuidance.fromCell(HeatmapCell cell) {
+    if (cell.status == SearchAreaStatus.scanning) {
+      final presentation = signalStrengthPresentation(
+        cell.rssDbm ?? cell.latestRssDbm ?? -100,
+      );
+      return SearchAreaGuidance(
+        statusLabel: presentation.label,
+        reason: presentation.reason,
+        action: presentation.action,
+        color: presentation.color,
+      );
+    }
     final status = _statusPresentation[cell.status]!;
     final reasonCode = _reasonStatuses[cell.statusReason] == cell.status
         ? cell.statusReason
@@ -46,35 +58,51 @@ class _StatusPresentation {
 }
 
 const _reasonLabels = <String, String>{
-  'no_measurements': '아직 수색 판단에 필요한 측정이 없습니다.',
+  'no_measurements': SearchAreaCopy.unsearchedReason,
   'insufficient_repeated_signal': '신호를 수집했지만 반복 확인 기준에 도달하지 않았습니다.',
-  'repeated_strong_signal': '구조 신호가 같은 구역에서 반복 확인되었습니다.',
+  'repeated_strong_signal': SearchAreaCopy.candidateReason,
+  'operator_false_alarm': SearchAreaCopy.falseAlarmReason,
+  'operator_survivor_confirmed': SearchAreaCopy.survivorFoundReason,
 };
 
 const _reasonStatuses = <String, SearchAreaStatus>{
   'no_measurements': SearchAreaStatus.unscanned,
   'insufficient_repeated_signal': SearchAreaStatus.scanning,
   'repeated_strong_signal': SearchAreaStatus.needsRecheck,
+  'operator_false_alarm': SearchAreaStatus.cleared,
+  'operator_survivor_confirmed': SearchAreaStatus.confirmed,
 };
 
 const _statusPresentation = <SearchAreaStatus, _StatusPresentation>{
   SearchAreaStatus.unscanned: _StatusPresentation(
-    label: '미확인',
+    label: SearchAreaCopy.unsearchedLabel,
     defaultReasonCode: 'no_measurements',
-    action: '드론으로 이 구역을 확인하세요.',
+    action: SearchAreaCopy.unsearchedAction,
     color: AppColors.offline,
   ),
   SearchAreaStatus.scanning: _StatusPresentation(
-    label: '확인 중',
+    label: SearchAreaCopy.veryWeakSignalLabel,
     defaultReasonCode: 'insufficient_repeated_signal',
-    action: '같은 경로를 유지하며 추가 측정하세요.',
-    color: AppColors.primary,
+    action: '현재 경로대로 수색을 계속하세요.',
+    color: SearchAreaColors.veryWeak,
   ),
   SearchAreaStatus.needsRecheck: _StatusPresentation(
-    label: '재확인 필요',
+    label: SearchAreaCopy.candidateLabel,
     defaultReasonCode: 'repeated_strong_signal',
-    action: '해당 위치를 저고도로 다시 통과하세요.',
-    color: AppColors.warning,
+    action: SearchAreaCopy.candidateAction,
+    color: SearchAreaColors.candidate,
+  ),
+  SearchAreaStatus.cleared: _StatusPresentation(
+    label: SearchAreaCopy.falseAlarmLabel,
+    defaultReasonCode: 'operator_false_alarm',
+    action: SearchAreaCopy.falseAlarmAction,
+    color: AppColors.textSecondary,
+  ),
+  SearchAreaStatus.confirmed: _StatusPresentation(
+    label: SearchAreaCopy.survivorFoundLabel,
+    defaultReasonCode: 'operator_survivor_confirmed',
+    action: SearchAreaCopy.survivorFoundAction,
+    color: AppColors.danger,
   ),
 };
 

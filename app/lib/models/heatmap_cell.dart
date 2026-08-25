@@ -3,19 +3,24 @@ import 'package:flutter/material.dart';
 enum SearchAreaStatus {
   unscanned,
   scanning,
-  needsRecheck;
+  needsRecheck,
+  cleared,
+  confirmed;
 
   factory SearchAreaStatus.fromJson(String value) => switch (value) {
     // Keep compatibility with heatmap payloads produced before the
     // operational scanning/needs_recheck vocabulary was introduced.
     'scanning' || 'active' => SearchAreaStatus.scanning,
     'needs_recheck' => SearchAreaStatus.needsRecheck,
+    'cleared' => SearchAreaStatus.cleared,
+    'confirmed' => SearchAreaStatus.confirmed,
     _ => SearchAreaStatus.unscanned,
   };
 }
 
 class HeatmapCell {
   final String cellId;
+  final int staticPriority;
   final int? droneId;
   final double? rssDbm;
   final String colorHex;
@@ -26,6 +31,7 @@ class HeatmapCell {
   final int sampleCount;
   final int droneCount;
   final int strongSignalCount;
+  final double candidateScore;
   final String statusReason;
   final DateTime? lastUpdated;
 
@@ -33,6 +39,7 @@ class HeatmapCell {
     required this.cellId,
     required this.colorHex,
     required this.status,
+    this.staticPriority = 3,
     this.droneId,
     this.rssDbm,
     this.latestRssDbm,
@@ -41,6 +48,7 @@ class HeatmapCell {
     this.sampleCount = 0,
     this.droneCount = 0,
     this.strongSignalCount = 0,
+    this.candidateScore = 0,
     this.statusReason = 'no_measurements',
     this.lastUpdated,
   });
@@ -57,12 +65,14 @@ class HeatmapCell {
     cellId: cellId,
     colorHex: '#404040',
     status: SearchAreaStatus.unscanned,
+    staticPriority: 3,
   );
 
   factory HeatmapCell.fromJson(Map<String, dynamic> json) => HeatmapCell(
     cellId: json['cell_id'] as String,
     colorHex: json['color'] as String,
     status: SearchAreaStatus.fromJson(json['status'] as String),
+    staticPriority: (json['static_priority'] as num?)?.toInt() ?? 3,
     droneId: json['drone_id'] as int?,
     rssDbm: (json['rss_dbm'] as num?)?.toDouble(),
     latestRssDbm: (json['latest_rss_dbm'] as num?)?.toDouble(),
@@ -71,6 +81,7 @@ class HeatmapCell {
     sampleCount: (json['sample_count'] as num?)?.toInt() ?? 0,
     droneCount: (json['drone_count'] as num?)?.toInt() ?? 0,
     strongSignalCount: (json['strong_signal_count'] as num?)?.toInt() ?? 0,
+    candidateScore: (json['candidate_score'] as num?)?.toDouble() ?? 0,
     statusReason: json['status_reason'] as String? ?? 'no_measurements',
     lastUpdated: _unixSeconds(json['last_updated'] as num?),
   );

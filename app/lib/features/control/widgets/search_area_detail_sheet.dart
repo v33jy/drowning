@@ -1,12 +1,10 @@
-import 'dart:async';
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../models/heatmap_cell.dart';
+import '../candidate_api.dart';
 import '../providers/heatmap_provider.dart';
 import '../providers/grid_provider.dart';
 import 'search_area_guidance.dart';
@@ -89,10 +87,47 @@ class SearchAreaDetailSheet extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           SearchActionSummary(action: guidance.action, reason: guidance.reason),
+          if (cell.needsRecheck) ...[
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () =>
+                        _review(context, cell.cellId, 'false_alarm'),
+                    child: const Text('오탐 처리'),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () =>
+                        _review(context, cell.cellId, 'survivor_confirmed'),
+                    child: const Text('요구조자 발견'),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: AppSpacing.md),
         ],
       ),
     );
+  }
+
+  Future<void> _review(
+    BuildContext context,
+    String cellId,
+    String outcome,
+  ) async {
+    try {
+      await reviewCandidateRequest(cellId: cellId, outcome: outcome);
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('후보 처리에 실패했습니다. 다시 시도해 주세요.')),
+      );
+    }
   }
 }
 
@@ -107,24 +142,6 @@ class _CallPreview extends StatefulWidget {
 
 class _CallPreviewState extends State<_CallPreview> {
   _DemoCallState _callState = _DemoCallState.idle;
-  bool _isSpeaking = false;
-  bool _pushToTalkMode = false;
-  bool _showPushToTalkHint = false;
-  Timer? _hintTimer;
-
-  @override
-  void dispose() {
-    _hintTimer?.cancel();
-    super.dispose();
-  }
-
-  void _showPushToTalkHelp() {
-    _hintTimer?.cancel();
-    _showPushToTalkHint = true;
-    _hintTimer = Timer(const Duration(milliseconds: 2600), () {
-      if (mounted) setState(() => _showPushToTalkHint = false);
-    });
-  }
 
   Future<void> _connect() async {
     setState(() => _callState = _DemoCallState.connecting);
@@ -136,8 +153,6 @@ class _CallPreviewState extends State<_CallPreview> {
 
   void _disconnect() => setState(() {
     _callState = _DemoCallState.ended;
-    _isSpeaking = false;
-    _pushToTalkMode = false;
   });
 
   @override
@@ -232,166 +247,36 @@ class _CallPreviewState extends State<_CallPreview> {
           ],
         ),
         const SizedBox(height: AppSpacing.sm),
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            SizedBox(
-              width: double.infinity,
-              child: SegmentedButton<bool>(
-                key: const Key('voice-mode-selector'),
-                segments: const [
-                  ButtonSegment<bool>(
-                    value: false,
-                    label: Text('음성 전달'),
-                    icon: Icon(Icons.mic_rounded, size: 17),
-                  ),
-                  ButtonSegment<bool>(
-                    value: true,
-                    label: Text('눌러서 말하기'),
-                    icon: Icon(Icons.touch_app_rounded, size: 17),
-                  ),
-                ],
-                selected: {_pushToTalkMode},
-                onSelectionChanged: (selection) => setState(() {
-                  _pushToTalkMode = selection.first;
-                  _isSpeaking = false;
-                  if (_pushToTalkMode) _showPushToTalkHelp();
-                }),
-                showSelectedIcon: false,
-                style: ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  side: WidgetStatePropertyAll(
-                    BorderSide(color: AppColors.navy.withValues(alpha: 0.18)),
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 43,
-              child: IgnorePointer(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  transitionBuilder: (child, animation) => FadeTransition(
-                    opacity: animation,
-                    child: ScaleTransition(
-                      alignment: Alignment.bottomRight,
-                      scale: Tween<double>(
-                        begin: 0.94,
-                        end: 1,
-                      ).animate(animation),
-                      child: child,
-                    ),
-                  ),
-                  child: _showPushToTalkHint
-                      ? const _PushToTalkHint(key: Key('push-to-talk-hint'))
-                      : const SizedBox.shrink(),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        if (!_pushToTalkMode)
-          Container(
-            key: const Key('continuous-voice-active'),
-            height: 48,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: const Color(0xFF16845B).withValues(alpha: 0.09),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: const Color(0xFF16845B).withValues(alpha: 0.2),
-              ),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.graphic_eq_rounded,
-                  color: Color(0xFF13704E),
-                  size: 20,
-                ),
-                SizedBox(width: 8),
-                Text(
-                  '음성 전달 중',
-                  style: TextStyle(
-                    color: Color(0xFF13704E),
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          Semantics(
-            button: true,
-            label: '누르는 동안 말하기',
-            child: GestureDetector(
-              key: const Key('push-to-talk'),
-              behavior: HitTestBehavior.opaque,
-              onTapDown: (_) => setState(() => _isSpeaking = true),
-              onTapUp: (_) => setState(() => _isSpeaking = false),
-              onTapCancel: () => setState(() => _isSpeaking = false),
-              child: AnimatedScale(
-                duration: const Duration(milliseconds: 140),
-                scale: _isSpeaking ? 0.985 : 1,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 140),
-                  height: 54,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: _isSpeaking
-                        ? const Color(0xFF0B6BCB)
-                        : AppColors.navy,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.24),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color:
-                            (_isSpeaking
-                                    ? const Color(0xFF0B6BCB)
-                                    : AppColors.navy)
-                                .withValues(alpha: _isSpeaking ? 0.3 : 0.22),
-                        blurRadius: _isSpeaking ? 16 : 12,
-                        offset: Offset(0, _isSpeaking ? 3 : 6),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        blurRadius: 1,
-                        offset: const Offset(0, 1),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        _isSpeaking
-                            ? Icons.mic_rounded
-                            : Icons.mic_none_rounded,
-                        color: Colors.white,
-                        size: 21,
-                      ),
-                      const SizedBox(width: 9),
-                      Text(
-                        _isSpeaking ? '말하는 중' : '눌러서 말하기',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.1,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+        Container(
+          key: const Key('continuous-voice-active'),
+          height: 48,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: const Color(0xFF16845B).withValues(alpha: 0.09),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: const Color(0xFF16845B).withValues(alpha: 0.2),
             ),
           ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.graphic_eq_rounded,
+                color: Color(0xFF13704E),
+                size: 20,
+              ),
+              SizedBox(width: 8),
+              Text(
+                '음성 전달 중',
+                style: TextStyle(
+                  color: Color(0xFF13704E),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     ),
     _DemoCallState.ended => Column(
@@ -424,56 +309,6 @@ class _CallPreviewState extends State<_CallPreview> {
     foregroundColor: Colors.white,
     minimumSize: const Size.fromHeight(44),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-  );
-}
-
-class _PushToTalkHint extends StatelessWidget {
-  const _PushToTalkHint({super.key});
-
-  @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.centerRight,
-    child: Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Container(
-          margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          decoration: BoxDecoration(
-            color: const Color(0xF207203E),
-            borderRadius: BorderRadius.circular(11),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.navy.withValues(alpha: 0.2),
-                blurRadius: 12,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: const Text(
-            '‘눌러서 말하기’ 버튼을 누르고 있는 동안만 구조대원의 음성이 전달됩니다.',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              height: 1.35,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        Positioned(
-          right: 28,
-          bottom: 2,
-          child: Transform.rotate(
-            angle: math.pi / 4,
-            child: const SizedBox(
-              width: 9,
-              height: 9,
-              child: ColoredBox(color: Color(0xF207203E)),
-            ),
-          ),
-        ),
-      ],
-    ),
   );
 }
 
