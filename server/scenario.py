@@ -1,11 +1,8 @@
-"""
-강남역 → 신논현역 6번 출구 재난 구조 시나리오
-================================================
-Usage:
-    python3 scenario.py
+"""지도 중요도 + RSSI 후보 셀 순차 확인 데모.
 
-환경변수:
-    DRONE_SERVER_URL   서버 주소 (기본: http://localhost:8001)
+시작 시 기존 수색 결과처럼 히트맵과 후보 셀을 준비한다. 드론은 서버가
+계산한 1번 후보부터 부드럽게 이동하고, 도착 팝업에서 구조자가 판정하면
+다음 후보로 출발한다.
 """
 
 from __future__ import annotations
@@ -13,120 +10,196 @@ from __future__ import annotations
 import asyncio
 import math
 import os
+from typing import Any
 
 import httpx
 
+import config
+from route_planner import cell_center
+
 SERVER_URL = os.environ.get("DRONE_SERVER_URL", "http://localhost:8001")
+DRONE_ID = int(os.environ.get("DRONE_ID", "1"))
+MOVE_INTERVAL = float(os.environ.get("SCENARIO_MOVE_INTERVAL", "0.12"))
+METERS_PER_STEP = float(os.environ.get("SCENARIO_METERS_PER_STEP", "18"))
+ALTITUDE = 35.0
 
-# 강남역 (출발)
-START_LAT = 37.4979
-START_LNG = 127.0276
+CANDIDATE_RSSI = {
+    "D3": -61.0,
+    "F2": -63.0,
+    "E5": -59.0,
+    "H8": -56.0,
+    "C9": -52.0,
+}
 
-# 신논현역 6번 출구 (목표)
-TARGET_LAT = 37.5044
-TARGET_LNG = 127.0248
-
-DRONE_ID   = int(os.environ.get("DRONE_ID", "1"))
-STEPS      = 30          # 이동 단계 수
-STEP_INTERVAL = 0.3      # 단계당 대기 시간(초) — 총 이동 시간 ~STEPS*STEP_INTERVAL초
-ALTITUDE   = 50.0
-
-
-# ---------------------------------------------------------------------------
 
 async def run() -> None:
     async with httpx.AsyncClient(base_url=SERVER_URL, timeout=5.0) as client:
-        _banner("재난 대응 드론 시나리오 시작")
-        print(f"  출발지 : 강남역          ({START_LAT}, {START_LNG})")
-        print(f"  목적지 : 신논현역 6번 출구 ({TARGET_LAT}, {TARGET_LNG})")
-        print()
+        _banner("재난 지역 후보 셀 순차 확인 시나리오")
+        start = cell_center("A0")
+        battery = 100.0
+        await _telemetry(client, *start, battery)
+        await _seed_existing_search(client)
+        await asyncio.sleep(1.0)
 
-        # ── Phase 1: 강남역에서 출발 ──────────────────────────────────────
-        cell_id = await _telemetry(client, START_LAT, START_LNG, 100)
-        await _signal(client, -40.0)
-        print("[출발] 강남역 — 드론 이륙")
-        await asyncio.sleep(STEP_INTERVAL)
+        route = await _route(client)
+        if not route:
+            print("후보 셀이 없습니다. 서버를 재시작한 뒤 다시 실행하세요.")
+            return
 
-        # ── Phase 2: 신논현역 6번 출구로 이동 ────────────────────────────
-        for step in range(1, STEPS + 1):
-            t   = step / STEPS
-            lat = START_LAT + (TARGET_LAT - START_LAT) * t
-            lng = START_LNG + (TARGET_LNG - START_LNG) * t
-            bat = 100 - step * 0.25
+        print("\n[초기 화면 준비 완료]")
+        print("  지도 중요도 + 기존 RSSI 히트맵 표시")
+        print("  후보 방문 순서:", " → ".join(route))
+        print("  드론이 1번 후보로 출발합니다.\n")
 
-            # 목표에 가까울수록 RSS 강해짐
-            dist    = math.hypot(lat - TARGET_LAT, lng - TARGET_LNG)
-            rss_dbm = max(-100.0, min(-40.0, -40.0 - dist * 3000))
+        current = start
+        for number, cell_id in enumerate(route, start=1):
+            target = cell_center(cell_id)
+            print(f"[{number}번] {cell_id} 후보 셀로 이동")
+            current, battery = await _fly_smoothly(
+                client, current, target, battery
+            )
+            await asyncio.sleep(1.2)
+            print("  도착: 영상 팝업에서 오탐 또는 요구조자 발견을 선택하세요.")
 
-            cell_id = await _telemetry(client, lat, lng, bat)
-            await _signal(client, rss_dbm)
+            outcome = await _wait_for_review(client, cell_id, battery, current)
+            if outcome == "survivor_confirmed":
+                _banner(f"요구조자 발견 — {number}번 {cell_id} 셀")
+                print("현장에서 호버링하며 영상·음성 연결을 유지합니다.")
+                await _hover(client, current, battery)
+                return
+            print("  오탐 처리 완료 — 다음 후보로 이동합니다.\n")
 
-            bar = "█" * int(t * 25) + "░" * (25 - int(t * 25))
-            print(f"[{step:02d}/{STEPS}] {bar}  RSS {rss_dbm:6.1f} dBm  bat {int(bat)}%")
-            await asyncio.sleep(STEP_INTERVAL)
-
-        # ── Phase 3: 탐지 이벤트 ─────────────────────────────────────────
-        print()
-        _banner("요구조자 탐지 — 신논현역 6번 출구")
-        resp = await _detection(client, cell_id)
-        detection_id = resp["detection_id"]
-        print(f"탐지 ID : {detection_id}")
-        print()
-
-        # 탐지 직후에도 드론은 현장 호버링
-        await _telemetry(client, TARGET_LAT, TARGET_LNG, 100 - STEPS * 0.25)
-
-        # ── Phase 4: 계속 호버링 ───────────────────────────────────────
-        print("\n드론 현장 호버링 중 (Ctrl+C로 종료)\n")
-        tick = 0
-        while True:
-            bat = max(10, 100 - STEPS * 0.25 - tick * 0.1)
-            await _telemetry(client, TARGET_LAT, TARGET_LNG, bat)
-            tick += 1
-            await asyncio.sleep(2)
+        print("모든 후보 확인이 끝났습니다.")
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+async def _seed_existing_search(client: httpx.AsyncClient) -> None:
+    print("[초기화] 지도 중요도와 기존 RSSI 측정 결과를 결합합니다.")
+    # 1차 수색이 끝난 시점이므로 전체 셀에 최소 한 개의 RSSI 표본이 있다.
+    # 후보가 아닌 셀도 주변 통과 측정값으로 채워 미확인 공백을 남기지 않는다.
+    baseline = {
+        f"{chr(65 + row)}{col}": -96.0 + ((row * 7 + col * 3) % 18)
+        for row in range(config.GRID_ROWS)
+        for col in range(config.GRID_COLS)
+    }
+    for cell_id, rss in baseline.items():
+        lat, lng = cell_center(cell_id)
+        response = await client.post(
+            f"/drones/{DRONE_ID}/signal",
+            json={
+                "measurement_id": f"scenario-sweep-{cell_id}",
+                "rss_dbm": rss,
+                "lat": lat,
+                "lng": lng,
+                "altitude": ALTITUDE,
+            },
+        )
+        response.raise_for_status()
 
-async def _telemetry(client: httpx.AsyncClient, lat: float, lng: float, bat: float) -> str | None:
-    r = await client.post(f"/drones/{DRONE_ID}/telemetry", json={
-        "lat":      round(lat, 6),
-        "lng":      round(lng, 6),
-        "altitude": ALTITUDE,
-        "battery":  int(bat),
-        "status":   "active",
-    })
-    return r.json().get("cell_id")
+    for cell_id, rss in CANDIDATE_RSSI.items():
+        lat, lng = cell_center(cell_id)
+        for sample in range(3):
+            response = await client.post(
+                f"/drones/{DRONE_ID}/signal",
+                json={
+                    "measurement_id": f"scenario-candidate-{cell_id}-{sample}",
+                    "rss_dbm": rss - sample * 0.4,
+                    "lat": lat,
+                    "lng": lng,
+                    "altitude": ALTITUDE,
+                },
+            )
+            response.raise_for_status()
 
 
-async def _signal(client: httpx.AsyncClient, rss_dbm: float) -> None:
-    await client.post(f"/drones/{DRONE_ID}/signal", json={
-        "rss_dbm": round(rss_dbm, 1),
-    })
+async def _route(client: httpx.AsyncClient) -> list[str]:
+    response = await client.post("/search/route", json={"drone_id": DRONE_ID})
+    response.raise_for_status()
+    return response.json()["order"]
 
 
-async def _detection(client: httpx.AsyncClient, cell_id: str | None) -> dict:
-    r = await client.post("/detection", json={
-        "drone_id":   DRONE_ID,
-        "cell_id":    cell_id,
-        "rss_dbm":    -41.5,
-        "stream_url": None,
-    })
-    return r.json()
+async def _fly_smoothly(
+    client: httpx.AsyncClient,
+    start: tuple[float, float],
+    target: tuple[float, float],
+    battery: float,
+) -> tuple[tuple[float, float], float]:
+    steps = max(8, math.ceil(_distance_meters(start, target) / METERS_PER_STEP))
+    for step in range(1, steps + 1):
+        progress = step / steps
+        eased = progress * progress * (3 - 2 * progress)
+        lat = start[0] + (target[0] - start[0]) * eased
+        lng = start[1] + (target[1] - start[1]) * eased
+        battery = max(10.0, battery - 0.035)
+        await _telemetry(client, lat, lng, battery)
+        await asyncio.sleep(MOVE_INTERVAL)
+    return target, battery
 
 
-def _banner(msg: str) -> None:
-    line = "=" * (len(msg) + 4)
-    print(line)
-    print(f"  {msg}")
-    print(line)
+async def _wait_for_review(
+    client: httpx.AsyncClient,
+    cell_id: str,
+    battery: float,
+    position: tuple[float, float],
+) -> str:
+    while True:
+        await _telemetry(client, *position, battery)
+        response = await client.get("/state")
+        response.raise_for_status()
+        cells = response.json().get("heatmap", [])
+        cell: dict[str, Any] | None = next(
+            (item for item in cells if item.get("cell_id") == cell_id), None
+        )
+        status = None if cell is None else cell.get("status")
+        if status == "cleared":
+            return "false_alarm"
+        if status == "confirmed":
+            return "survivor_confirmed"
+        await asyncio.sleep(0.8)
+
+
+async def _hover(
+    client: httpx.AsyncClient,
+    position: tuple[float, float],
+    battery: float,
+) -> None:
+    while True:
+        battery = max(10.0, battery - 0.02)
+        await _telemetry(client, *position, battery)
+        await asyncio.sleep(2.0)
+
+
+async def _telemetry(
+    client: httpx.AsyncClient, lat: float, lng: float, battery: float
+) -> None:
+    response = await client.post(
+        f"/drones/{DRONE_ID}/telemetry",
+        json={
+            "lat": round(lat, 7),
+            "lng": round(lng, 7),
+            "altitude": ALTITUDE,
+            "battery": int(battery),
+            "status": "active",
+        },
+    )
+    response.raise_for_status()
+
+
+def _distance_meters(a: tuple[float, float], b: tuple[float, float]) -> float:
+    lat_scale = 111_320.0
+    mean_lat = math.radians((a[0] + b[0]) / 2)
+    north = (a[0] - b[0]) * lat_scale
+    east = (a[1] - b[1]) * lat_scale * math.cos(mean_lat)
+    return math.hypot(north, east)
+
+
+def _banner(message: str) -> None:
+    line = "=" * (len(message) + 4)
+    print(f"{line}\n  {message}\n{line}")
 
 
 if __name__ == "__main__":
     import sys
-    # Unbuffered output so logs appear immediately when redirected.
+
     sys.stdout.reconfigure(line_buffering=True)
     try:
         asyncio.run(run())

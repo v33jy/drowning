@@ -7,6 +7,7 @@ from typing import Optional
 from camera_controller import CameraController, H264RtspPublisher
 from client import GatewayClient, extract_drone_id
 from config import settings
+from lora_serial import LoRaSerialSource
 from mavlink_telemetry import (
     MavlinkTelemetryService,
     combine_measurements,
@@ -21,6 +22,7 @@ _START_LAT, _START_LNG = 37.4979, 127.0276
 _TARGET_LAT, _TARGET_LNG = 37.5044, 127.0248
 _APPROACH_STEPS = 30
 _SIGNAL_PIPELINE_MODE = "signal_pipeline"
+_LORA_SERIAL_MODE = "lora_serial"
 
 
 def _build_mock_observation(
@@ -120,6 +122,17 @@ def get_measurement_source(
         print("[input mode] H743 MAVLink + SDR -> FPGA signal pipeline")
         return generate_signal_measurements()
 
+    if mode == _LORA_SERIAL_MODE:
+        print(
+            "[input mode] Heltec LoRa RSSI serial "
+            f"port={settings.lora_serial_port}"
+        )
+        return LoRaSerialSource(
+            port=settings.lora_serial_port,
+            baud_rate=settings.lora_serial_baud_rate,
+            timeout_sec=settings.lora_serial_timeout_sec,
+        ).measurements()
+
     raise ValueError(
         f"Unsupported INPUT_MODE: {settings.input_mode}"
     )
@@ -190,7 +203,7 @@ def main() -> None:
     print(f"Detection Mode : {settings.detection_mode}")
     print(
         "MAVLink        : "
-        f"{settings.input_mode.lower() == _SIGNAL_PIPELINE_MODE}"
+        f"{settings.input_mode.lower() in (_SIGNAL_PIPELINE_MODE, _LORA_SERIAL_MODE)}"
     )
     print(f"Dry Run        : {settings.dry_run}")
     print("=" * 50)
@@ -216,7 +229,7 @@ def main() -> None:
     mavlink_service = None
 
     try:
-        if settings.input_mode.lower() == _SIGNAL_PIPELINE_MODE:
+        if settings.input_mode.lower() in (_SIGNAL_PIPELINE_MODE, _LORA_SERIAL_MODE):
             mavlink_service = MavlinkTelemetryService(
                 port=settings.fc_serial_port,
                 baud_rate=settings.fc_baud_rate,
@@ -236,7 +249,7 @@ def main() -> None:
             if mavlink_service is not None:
                 if not isinstance(measurement, SignalMeasurement):
                     raise TypeError(
-                        "signal_pipeline must produce SignalMeasurement"
+                        "hardware mode must produce SignalMeasurement"
                     )
                 flight_data = mavlink_service.latest(
                     settings.fc_position_max_age_sec

@@ -55,9 +55,26 @@ void main() {
 
     final guidance = SearchAreaGuidance.fromCell(cell);
 
-    expect(guidance.statusLabel, '재확인 필요');
-    expect(guidance.reason, contains('반복 확인'));
-    expect(guidance.action, contains('저고도'));
+    expect(guidance.statusLabel, '요구조자 후보');
+    expect(guidance.reason, contains('반복적으로 측정'));
+    expect(guidance.action, contains('현장 영상'));
+  });
+
+  test('측정 셀을 신호 세기별 라벨로 구분한다', () {
+    SearchAreaGuidance guidance(double signal) => SearchAreaGuidance.fromCell(
+      HeatmapCell(
+        cellId: 'A0',
+        colorHex: '#000000',
+        status: SearchAreaStatus.scanning,
+        rssDbm: signal,
+      ),
+    );
+
+    expect(guidance(-90).statusLabel, '신호 매우 약함');
+    expect(guidance(-80).statusLabel, '신호 약함');
+    expect(guidance(-70).statusLabel, '신호 보통');
+    expect(guidance(-60).statusLabel, '신호 강함');
+    expect(guidance(-60).reason, isNot(contains('RSSI')));
   });
 
   test('falls back to status guidance for a missing legacy reason', () {
@@ -69,7 +86,7 @@ void main() {
 
     final guidance = SearchAreaGuidance.fromCell(cell);
 
-    expect(guidance.reason, contains('신호를 수집'));
+    expect(guidance.statusLabel, '신호 매우 약함');
   });
 
   test('formats last checked time for operations', () {
@@ -104,10 +121,10 @@ void main() {
       expect(find.text('수색 구역 정보'), findsNothing);
       expect(find.text('수색 구역'), findsNothing);
       expect(find.text('위치 정보 없음'), findsOneWidget);
-      expect(find.text('재확인 필요'), findsOneWidget);
+      expect(find.text('요구조자 후보'), findsOneWidget);
       expect(find.text('판단 이유'), findsNothing);
       expect(find.textContaining('다음 행동 지침:'), findsNothing);
-      expect(find.textContaining('저고도로 다시 통과'), findsOneWidget);
+      expect(find.textContaining('번호 순서대로 방문'), findsOneWidget);
       expect(find.text('측정 횟수'), findsNothing);
       expect(find.text('확인 드론'), findsNothing);
       expect(find.textContaining('위치를 확정하지 않습니다'), findsNothing);

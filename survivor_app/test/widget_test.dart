@@ -94,7 +94,7 @@ void main() {
     controller.dispose();
   });
 
-  testWidgets('통화 화면에서 통화하기와 눌러서 말하기를 전환한다', (tester) async {
+  testWidgets('통화 화면에서 일반 양방향 통화만 표시한다', (tester) async {
     final controller = SurvivorCallController()..phase = CallPhase.active;
     await tester.pumpWidget(
       MaterialApp(home: CallScreen(controller: controller, autoStart: false)),
@@ -102,10 +102,7 @@ void main() {
 
     expect(find.text('마이크 음소거'), findsOneWidget);
     expect(find.text('길게 눌러 말하기'), findsNothing);
-
-    await tester.tap(find.text('눌러서 말하기'));
-    await tester.pump();
-    expect(find.text('길게 눌러 말하기'), findsOneWidget);
+    expect(find.text('눌러서 말하기'), findsNothing);
 
     controller.dispose();
   });

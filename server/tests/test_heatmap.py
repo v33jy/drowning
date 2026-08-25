@@ -1,4 +1,7 @@
 import sys
+import json
+import math
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -55,6 +58,46 @@ class GridDefinitionTests(unittest.TestCase):
             {"A0": "현장 지휘소"},
         )
 
+    def test_grid_definition_includes_static_priority(self):
+        cells = {cell["cell_id"]: cell for cell in grid_definition()}
+
+        self.assertEqual(cells["F2"]["static_priority"], 5)
+        self.assertEqual(cells["A0"]["static_priority"], 3)
+
+    def test_default_cells_are_approximately_square_in_meters(self):
+        bounds = grid_definition()[0]["bounds"]
+        north_south = (bounds["lat_max"] - bounds["lat_min"]) * 111_320
+        mean_lat = (bounds["lat_min"] + bounds["lat_max"]) / 2
+        east_west = (
+            (bounds["lng_max"] - bounds["lng_min"])
+            * 111_320
+            * math.cos(math.radians(mean_lat))
+        )
+
+        self.assertLess(abs(north_south - east_west) / north_south, 0.001)
+
+    def test_priority_loader_rejects_unknown_cell(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "priorities.json"
+            path.write_text(
+                json.dumps({"default_priority": 3, "cells": {"Z99": 5}}),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "unknown cells"):
+                config._load_grid_priorities(path)
+
+    def test_priority_loader_rejects_out_of_range_priority(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "priorities.json"
+            path.write_text(
+                json.dumps({"default_priority": 3, "cells": {"A0": 6}}),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "between 1 and 5"):
+                config._load_grid_priorities(path)
+
 
 class HeatmapStateTests(unittest.TestCase):
     def setUp(self):
@@ -64,6 +107,7 @@ class HeatmapStateTests(unittest.TestCase):
         snapshot = self.heatmap.snapshot()
         self.assertEqual(len(snapshot), config.GRID_ROWS * config.GRID_COLS)
         self.assertTrue(all(cell["status"] == "unscanned" for cell in snapshot))
+        self.assertTrue(all(1 <= cell["static_priority"] <= 5 for cell in snapshot))
 
     def test_update_unknown_cell_raises(self):
         with self.assertRaises(ValueError):
@@ -91,6 +135,19 @@ class HeatmapStateTests(unittest.TestCase):
         self.assertEqual(cell["status_reason"], "repeated_strong_signal")
         self.assertEqual(cell["strong_signal_count"], 3)
         self.assertEqual(cell["drone_count"], 2)
+
+    def test_candidate_score_combines_priority_and_rss(self):
+        high_priority = HeatmapState()
+        normal_priority = HeatmapState()
+        for index in range(config.SEARCH_RECHECK_MIN_SAMPLES):
+            high_priority.update("F2", 1, -70.0, index)
+            normal_priority.update("A0", 1, -70.0, index)
+
+        high = next(c for c in high_priority.snapshot() if c["cell_id"] == "F2")
+        normal = next(c for c in normal_priority.snapshot() if c["cell_id"] == "A0")
+
+        self.assertGreater(high["candidate_score"], normal["candidate_score"])
+        self.assertEqual(high["status"], "needs_recheck")
 
     def test_summary_uses_recent_median_as_representative_rss(self):
         for rss_dbm in (-90.0, -60.0, -50.0):

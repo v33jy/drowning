@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/widgets/severity.dart';
 import '../../../models/drone_state.dart';
+import '../../../models/search_area_presentation.dart';
 import '../../../services/call_service.dart';
 import '../../control/providers/drones_provider.dart';
 import '../../control/providers/heatmap_provider.dart';
@@ -11,7 +12,7 @@ import '../models/log_entry.dart';
 import 'call_activity_recorder.dart';
 
 /// Records operator-relevant state transitions rather than every telemetry or
-/// RSS sample. This keeps the log useful as a search timeline.
+/// raw signal sample. This keeps the log useful as a search timeline.
 class SearchActivityNotifier extends Notifier<List<LogEntry>> {
   bool _searchStarted = false;
   bool _disposed = false;
@@ -37,9 +38,9 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
           _append(
             LogActivityKind.areaNeedsRecheck,
             entry.value.droneId ?? _currentDroneId,
-            '재확인 필요 - ${_locationLabel(entry.key)}',
+            '${SearchAreaCopy.candidateLabel} - ${_locationLabel(entry.key)}',
             Severity.warning,
-            explanation: '강한 신호가 반복 관측되어 재수색 대상으로 분류되었습니다.',
+            explanation: SearchAreaCopy.candidateLogReason,
           );
         }
       }
@@ -65,7 +66,7 @@ class SearchActivityNotifier extends Notifier<List<LogEntry>> {
         final before = previousStatuses[entry.event.detectionId];
         if (before == DetectionStatus.pending && entry.status != before) {
           final label = entry.status == DetectionStatus.rescued
-              ? '구조 완료 처리'
+              ? SearchAreaCopy.survivorFoundLabel
               : '오탐 처리';
           _append(
             LogActivityKind.detectionResolved,

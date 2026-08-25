@@ -70,6 +70,7 @@ def grid_definition() -> list[dict]:
                 "cell_id": cell_id,
                 "bounds": cell_bounds(row, col),
                 "location_label": config.GRID_LANDMARKS.get(cell_id),
+                "static_priority": config.grid_priority(cell_id),
             })
     return cells
 
@@ -82,6 +83,16 @@ _STATUS_COLORS = {
     "unscanned": "#404040",
     "scanning": "#1976D2",
     "needs_recheck": "#F57C00",
+    "cleared": "#68727D",
+    "confirmed": "#D32F2F",
+}
+
+_PRIORITY_COLORS = {
+    1: "#455A64",
+    2: "#546E7A",
+    3: "#607D8B",
+    4: "#7E57C2",
+    5: "#5E35B1",
 }
 
 
@@ -106,6 +117,7 @@ class CellSignalSummary:
     recent_samples: list[SignalSample] = field(default_factory=list)
     drone_ids: set[int] = field(default_factory=set)
     sample_count: int = 0
+    review_outcome: Optional[str] = None
 
     def record(
         self,
@@ -161,15 +173,45 @@ class CellSignalSummary:
         )
 
     @property
+    def candidate_score(self) -> float:
+        """Fuse radio evidence with the map-derived prior on a 0..1 scale."""
+        if not self.recent_rss:
+            return 0.0
+        strongest = sorted(self.recent_rss, reverse=True)[
+            : config.SEARCH_RECHECK_MIN_SAMPLES
+        ]
+        rss = statistics.median(strongest)
+        span = config.SEARCH_RSS_CEILING_DBM - config.SEARCH_RSS_FLOOR_DBM
+        if span <= 0:
+            return 0.0
+        signal_score = min(
+            1.0,
+            max(0.0, (rss - config.SEARCH_RSS_FLOOR_DBM) / span),
+        )
+        priority_score = (config.grid_priority(self.cell_id) - 1) / 4
+        return round(signal_score * 0.75 + priority_score * 0.25, 3)
+
+    @property
     def status(self) -> str:
+        if self.review_outcome == "false_alarm":
+            return "cleared"
+        if self.review_outcome == "survivor_confirmed":
+            return "confirmed"
         if self.sample_count == 0:
             return "unscanned"
-        if self.strong_signal_count >= config.SEARCH_RECHECK_MIN_SAMPLES:
+        if (
+            len(self.recent_samples) >= config.SEARCH_RECHECK_MIN_SAMPLES
+            and self.candidate_score >= config.SEARCH_CANDIDATE_MIN_SCORE
+        ):
             return "needs_recheck"
         return "scanning"
 
     @property
     def status_reason(self) -> str:
+        if self.status == "cleared":
+            return "operator_false_alarm"
+        if self.status == "confirmed":
+            return "operator_survivor_confirmed"
         if self.status == "unscanned":
             return "no_measurements"
         if self.status == "needs_recheck":
@@ -181,6 +223,7 @@ class CellSignalSummary:
         latest = self.latest_sample
         return {
             "cell_id": self.cell_id,
+            "static_priority": config.grid_priority(self.cell_id),
             "drone_id": latest.drone_id if latest is not None else None,
             "rss_dbm": representative,
             "latest_rss_dbm": latest.rss_dbm if latest is not None else None,
@@ -189,9 +232,15 @@ class CellSignalSummary:
             "sample_count": self.sample_count,
             "drone_count": len(self.drone_ids),
             "strong_signal_count": self.strong_signal_count,
-            "color": _STATUS_COLORS[self.status],
+            "candidate_score": self.candidate_score,
+            "color": (
+                _PRIORITY_COLORS[config.grid_priority(self.cell_id)]
+                if self.status == "unscanned"
+                else _STATUS_COLORS[self.status]
+            ),
             "status": self.status,
             "status_reason": self.status_reason,
+            "review_outcome": self.review_outcome,
             "last_updated": latest.measured_at if latest is not None else None,
         }
 
@@ -225,3 +274,10 @@ class HeatmapState:
     def snapshot(self) -> list[dict]:
         """Return all cell states as a list, suitable for JSON serialisation."""
         return [cell.to_dict() for cell in self._cells.values()]
+
+    def review_candidate(self, cell_id: str, outcome: str) -> None:
+        if cell_id not in self._cells:
+            raise ValueError(f"Unknown cell_id '{cell_id}'. Must be within the configured grid.")
+        if self._cells[cell_id].status != "needs_recheck":
+            raise ValueError(f"Cell '{cell_id}' is not awaiting recheck.")
+        self._cells[cell_id].review_outcome = outcome

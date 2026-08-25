@@ -2,6 +2,7 @@ import 'package:control_app/features/detection/call_controls.dart';
 import 'package:control_app/features/detection/detection_sheet.dart';
 import 'package:control_app/features/detection/providers/detection_log_provider.dart';
 import 'package:control_app/models/detection_event.dart';
+import 'package:control_app/models/search_area_presentation.dart';
 import 'package:control_app/services/call_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -63,16 +64,16 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   }
 
-  testWidgets('닫기, 오탐, 구조 완료 처리가 보인다', (tester) async {
+  testWidgets('닫기, 오탐, 요구조자 발견 처리가 보인다', (tester) async {
     await pumpSheet(tester);
 
     expect(find.byTooltip('닫기'), findsOneWidget);
     expect(find.text('오탐 처리'), findsOneWidget);
-    expect(find.text('구조 완료'), findsOneWidget);
+    expect(find.text('요구조자 발견'), findsOneWidget);
     expect(find.text('전화 연결'), findsOneWidget);
   });
 
-  testWidgets('처리 완료 기록은 판단 결과만 읽기 전용으로 표시한다', (tester) async {
+  testWidgets('요구조자 확인 후에도 영상과 전화 섹션을 유지한다', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
@@ -85,9 +86,11 @@ void main() {
     await tester.pump();
 
     expect(find.text('처리가 완료된 기록입니다.'), findsOneWidget);
-    expect(find.text('현장 확인을 거쳐 구조 완료로 처리되었습니다.'), findsOneWidget);
+    expect(find.text(SearchAreaCopy.survivorFoundReason), findsOneWidget);
     expect(find.text('오탐 처리'), findsNothing);
-    expect(find.text('전화 연결'), findsNothing);
+    expect(find.text('현장 영상'), findsOneWidget);
+    expect(find.text('요구조자 전화'), findsOneWidget);
+    expect(find.text('전화 연결'), findsOneWidget);
   });
 
   testWidgets('오탐 처리는 확인 다이얼로그 없이 바로 처리되지 않는다', (tester) async {
@@ -100,7 +103,7 @@ void main() {
 
     expect(find.text('오탐으로 처리할까요?'), findsOneWidget);
     // 다이얼로그가 뜬 시점엔 아직 시트가 닫히지 않아야 한다.
-    expect(find.text('구조 완료'), findsOneWidget);
+    expect(find.text('요구조자 발견'), findsOneWidget);
   });
 
   testWidgets('닫기는 시트를 닫되 큐에서 제거하지 않는다', (tester) async {

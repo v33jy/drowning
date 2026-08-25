@@ -1,10 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:http/http.dart' as http;
 
+import '../../config.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../models/detection_event.dart';
 import '../../models/grid_cell.dart';
@@ -18,10 +22,12 @@ import 'detection_panel_selection.dart';
 import 'operational_section.dart';
 import 'providers/drones_provider.dart';
 import 'providers/grid_provider.dart';
+import 'providers/heatmap_provider.dart';
 import 'providers/map_focus_provider.dart';
 import 'widgets/detection_panel_stack.dart';
 import 'widgets/floating_map_panel.dart';
 import 'widgets/heatmap_painter.dart';
+import 'widgets/candidate_route_layer.dart';
 import 'widgets/help_screen.dart';
 import 'widgets/marker_layer.dart';
 import 'widgets/offline_banner.dart';
@@ -46,6 +52,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
 
   final _mapController = MapController();
   bool _centeredOnFirstDrone = false;
+  final Set<String> _openedCandidateCells = {};
   DetectionEvent? _activeDetection;
   DetectionStatus _activeDetectionStatus = DetectionStatus.pending;
   String? _selectedCellId;
@@ -93,8 +100,19 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
 
   void _handleDetectionOutcome(DetectionOutcome outcome) {
     if (!mounted) return;
+    final cellId = _activeDetection?.cellId;
+    if (cellId != null && outcome != DetectionOutcome.minimized) {
+      final reviewOutcome = outcome == DetectionOutcome.falseAlarm
+          ? 'false_alarm'
+          : 'survivor_confirmed';
+      unawaited(_reviewCandidate(cellId, reviewOutcome));
+    }
     if (outcome == DetectionOutcome.minimized) {
       _closeMapPanels();
+      return;
+    }
+    if (outcome == DetectionOutcome.rescued) {
+      setState(() => _activeDetectionStatus = DetectionStatus.rescued);
       return;
     }
     final queue = ref.read(pendingDetectionQueueProvider);
@@ -103,6 +121,35 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
       _closeMapPanels();
     } else {
       _showDetection(next);
+    }
+  }
+
+  Future<void> _reviewCandidate(String cellId, String outcome) async {
+    await http.put(
+      Uri.parse('${Config.baseUrl}/search/candidates/$cellId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'outcome': outcome}),
+    );
+  }
+
+  Future<void> _openCandidateOnArrival(String cellId, int droneId) async {
+    if (_openedCandidateCells.contains(cellId)) return;
+    final cell = ref.read(heatmapProvider)[cellId];
+    if (cell == null || !cell.needsRecheck) return;
+    _openedCandidateCells.add(cellId);
+    try {
+      await http.post(
+        Uri.parse('${Config.baseUrl}/detection'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'drone_id': droneId,
+          'cell_id': cellId,
+          'rss_dbm': cell.rssDbm ?? cell.latestRssDbm ?? -65.0,
+          'stream_url': Config.videoWhepUrl,
+        }),
+      );
+    } catch (_) {
+      _openedCandidateCells.remove(cellId);
     }
   }
 
@@ -233,6 +280,12 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
         _centeredOnFirstDrone = true;
         _mapController.move(next.values.first.position, 15);
       }
+      for (final drone in next.values) {
+        final previousCell = previous?[drone.droneId]?.cellId;
+        if (drone.cellId != null && drone.cellId != previousCell) {
+          unawaited(_openCandidateOnArrival(drone.cellId!, drone.droneId));
+        }
+      }
     });
 
     // 새 탐지는 항상 스택의 최상단 상세로 열고, 기존 미처리 탐지는 아래의
@@ -295,6 +348,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                           userAgentPackageName: 'com.drone.control_app',
                         ),
                         const HeatmapLayer(),
+                        CandidateRouteLayer(
+                          highlightedCellId: activeDetection?.cellId,
+                        ),
                         const DroneMarkerLayer(),
                         RichAttributionWidget(
                           attributions: [

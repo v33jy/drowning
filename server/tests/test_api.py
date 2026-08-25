@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config
 import state
-from heatmap import HeatmapState
+from heatmap import HeatmapState, cell_bounds
 from main import app
 from starlette.testclient import TestClient
 
@@ -171,6 +171,59 @@ class SignalTests(ApiTestCase):
         resp = self.client.post("/drones/1/signal", json={"rss_dbm": -60.0})
         self.assertEqual(resp.status_code, 422)
 
+    def test_candidate_review_clears_false_alarm_from_recheck(self):
+        for index in range(config.SEARCH_RECHECK_MIN_SAMPLES):
+            self.client.post("/drones/1/signal", json={
+                "measurement_id": f"review-{index}",
+                "rss_dbm": config.SEARCH_RECHECK_RSS_DBM,
+                "lat": config.LAT_MIN,
+                "lng": config.LNG_MIN,
+            })
+
+        response = self.client.put(
+            "/search/candidates/A0", json={"outcome": "false_alarm"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        cell = next(c for c in state.heatmap.snapshot() if c["cell_id"] == "A0")
+        self.assertEqual(cell["status"], "cleared")
+        self.assertEqual(cell["review_outcome"], "false_alarm")
+
+    def test_non_candidate_cannot_be_reviewed(self):
+        response = self.client.put(
+            "/search/candidates/A0", json={"outcome": "false_alarm"}
+        )
+        self.assertEqual(response.status_code, 409)
+
+    def test_candidate_route_uses_current_drone_position(self):
+        self.client.post(
+            "/drones/1/telemetry",
+            json={
+                "lat": config.LAT_MIN,
+                "lng": config.LNG_MIN,
+                "altitude": 10,
+                "battery": 90,
+            },
+        )
+        for cell_id, col in (("A0", 0), ("A3", 3)):
+            bounds = cell_bounds(0, col)
+            for index in range(config.SEARCH_RECHECK_MIN_SAMPLES):
+                self.client.post(
+                    "/drones/1/signal",
+                    json={
+                        "measurement_id": f"{cell_id}-{index}",
+                        "rss_dbm": -50,
+                        "lat": (bounds["lat_min"] + bounds["lat_max"]) / 2,
+                        "lng": (bounds["lng_min"] + bounds["lng_max"]) / 2,
+                    },
+                )
+
+        response = self.client.post("/search/route", json={"drone_id": 1})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["order"], ["A0", "A3"])
+        self.assertGreater(response.json()["distance_meters"], 0)
+
 
 class DetectionTests(ApiTestCase):
     def test_report_then_list_detection(self):
@@ -231,6 +284,9 @@ class MetaTests(ApiTestCase):
         resp = self.client.get("/heatmap/grid")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.json()), config.GRID_ROWS * config.GRID_COLS)
+        self.assertTrue(
+            all("static_priority" in cell for cell in resp.json())
+        )
 
 
 class ControlWebSocketTests(ApiTestCase):

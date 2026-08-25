@@ -31,14 +31,14 @@ void OnRxDone(
     memcpy(rxPacket, payload, size);
     rxPacket[size] = '\0';
 
-    Serial.print("LORA RX DATA: ");
+    // Raspberry Pi가 한 패킷을 원자적으로 파싱할 수 있는 형식이다.
+    // payload 내부의 '|' 문자는 Pi에서 마지막 필드의 일부로 보존된다.
+    Serial.print("LORA_SAMPLE|");
+    Serial.print(rssi);
+    Serial.print("|");
+    Serial.print(snr);
+    Serial.print("|");
     Serial.println(rxPacket);
-
-    Serial.print("RSSI: ");
-    Serial.println(rssi);
-
-    Serial.print("SNR: ");
-    Serial.println(snr);
 
     startReceive();
 }

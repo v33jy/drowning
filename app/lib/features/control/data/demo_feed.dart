@@ -66,8 +66,8 @@ class _DemoCellSummary {
 class DemoFeed {
   DemoFeed._();
 
-  static const _latMin = 37.490, _latMax = 37.515;
-  static const _lngMin = 127.020, _lngMax = 127.040;
+  static const _latMin = 37.49625, _latMax = 37.50875;
+  static const _lngMin = 127.02212178363473, _lngMax = 127.03787821636527;
   static const _gridRows = 10, _gridCols = 10;
   static const _rssMin = -100.0, _rssMax = -40.0;
   static const recentWindow = 10;

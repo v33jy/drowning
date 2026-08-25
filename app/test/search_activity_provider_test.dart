@@ -62,7 +62,7 @@ void main() {
               (entry) => entry.activityKind == LogActivityKind.areaNeedsRecheck,
             )
             .explanation,
-        '강한 신호가 반복 관측되어 재수색 대상으로 분류되었습니다.',
+        '강한 신호가 반복적으로 측정되어 확인이 필요한 구역으로 분류되었습니다.',
       );
     },
   );

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/widgets/severity.dart';
+import '../../../models/search_area_presentation.dart';
 import '../../control/providers/grid_provider.dart';
 import '../../detection/providers/detection_log_provider.dart';
 import '../models/log_entry.dart';
@@ -25,7 +26,7 @@ final combinedLogProvider = Provider<List<LogEntry>>((ref) {
           (d.event.timestamp * 1000).round(),
         ),
         title:
-            '탐지 발생 — ${locationLabelForCell(cellId: d.event.cellId, labels: locationLabels, grid: grid)}',
+            '${SearchAreaCopy.candidateLabel} — ${locationLabelForCell(cellId: d.event.cellId, labels: locationLabels, grid: grid)}',
         severity: switch (d.status) {
           DetectionStatus.pending => Severity.warning,
           DetectionStatus.rescued => Severity.ok,

@@ -8,7 +8,6 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'call_models.dart';
 import 'call_screen_widgets.dart';
-import 'push_to_talk_button.dart';
 
 export 'call_models.dart';
 
@@ -482,38 +481,10 @@ class _CallScreenState extends State<CallScreen> {
                                 ),
                                 child: Column(
                                   children: [
-                                    AudioModeSelector(
-                                      mode: controller.audioMode,
-                                      onChanged: controller.setAudioMode,
+                                    NormalCallControl(
+                                      isMuted: controller.isMuted,
+                                      onToggleMute: controller.toggleMute,
                                     ),
-                                    const SizedBox(height: 18),
-                                    if (controller.audioMode == AudioMode.call)
-                                      NormalCallControl(
-                                        isMuted: controller.isMuted,
-                                        onToggleMute: controller.toggleMute,
-                                      )
-                                    else ...[
-                                      SurvivorPushToTalkButton(
-                                        isTransmitting:
-                                            controller.isTransmitting,
-                                        onTransmitStart:
-                                            controller.startTransmitting,
-                                        onTransmitEnd:
-                                            controller.stopTransmitting,
-                                      ),
-                                      const SizedBox(height: 14),
-                                      Text(
-                                        controller.isTransmitting
-                                            ? '목소리를 구조대에 전송하고 있습니다'
-                                            : '버튼을 누르는 동안만 마이크가 켜집니다',
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          color: Color(0xFF405571),
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
                                   ],
                                 ),
                               )

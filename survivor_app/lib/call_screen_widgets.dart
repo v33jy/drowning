@@ -217,42 +217,6 @@ class SafetyGuideCard extends StatelessWidget {
   );
 }
 
-class AudioModeSelector extends StatelessWidget {
-  const AudioModeSelector({
-    super.key,
-    required this.mode,
-    required this.onChanged,
-  });
-
-  final AudioMode mode;
-  final ValueChanged<AudioMode> onChanged;
-
-  @override
-  Widget build(BuildContext context) => SegmentedButton<AudioMode>(
-    segments: const [
-      ButtonSegment(
-        value: AudioMode.call,
-        label: Text('통화하기'),
-        icon: Icon(Icons.call_rounded),
-      ),
-      ButtonSegment(
-        value: AudioMode.pushToTalk,
-        label: Text('눌러서 말하기'),
-        icon: Icon(Icons.radio_rounded),
-      ),
-    ],
-    selected: {mode},
-    onSelectionChanged: (selection) => onChanged(selection.first),
-    showSelectedIcon: false,
-    style: ButtonStyle(
-      visualDensity: VisualDensity.comfortable,
-      textStyle: WidgetStateProperty.all(
-        const TextStyle(fontWeight: FontWeight.w800),
-      ),
-    ),
-  );
-}
-
 class NormalCallControl extends StatelessWidget {
   const NormalCallControl({
     super.key,

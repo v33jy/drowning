@@ -11,12 +11,14 @@ class DetectionActions extends ConsumerStatefulWidget {
     required this.callSessionId,
     required this.onFalseAlarm,
     required this.onRescued,
+    this.showReviewActions = true,
     super.key,
   });
 
   final String? callSessionId;
   final VoidCallback onFalseAlarm;
   final VoidCallback onRescued;
+  final bool showReviewActions;
 
   @override
   ConsumerState<DetectionActions> createState() => _DetectionActionsState();
@@ -42,32 +44,34 @@ class _DetectionActionsState extends ConsumerState<DetectionActions> {
               ? const _StateLabel('통화 연결 정보 없음', AppColors.textSecondary)
               : _callContent(sessionId, status, state, service),
         ),
-        const SizedBox(height: AppSpacing.md),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.danger,
+        if (widget.showReviewActions) ...[
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.danger,
+                  ),
+                  onPressed: widget.onFalseAlarm,
+                  icon: const Icon(Icons.flag_outlined, size: 18),
+                  label: const Text('오탐 처리'),
                 ),
-                onPressed: widget.onFalseAlarm,
-                icon: const Icon(Icons.flag_outlined, size: 18),
-                label: const Text('오탐 처리'),
               ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.success,
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.success,
+                  ),
+                  onPressed: widget.onRescued,
+                  icon: const Icon(Icons.check, size: 18),
+                  label: const Text('요구조자 발견'),
                 ),
-                onPressed: widget.onRescued,
-                icon: const Icon(Icons.check, size: 18),
-                label: const Text('구조 완료'),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -157,69 +161,23 @@ class _DetectionActionsState extends ConsumerState<DetectionActions> {
         ],
       ),
       const SizedBox(height: AppSpacing.sm),
-      SegmentedButton<bool>(
-        key: const Key('voice-mode-selector'),
-        segments: const [
-          ButtonSegment(
-            value: false,
-            label: Text('음성 전달'),
-            icon: Icon(Icons.mic_rounded, size: 17),
-          ),
-          ButtonSegment(
-            value: true,
-            label: Text('눌러서 말하기'),
-            icon: Icon(Icons.touch_app_rounded, size: 17),
-          ),
-        ],
-        selected: {state.audioMode == CallAudioMode.pushToTalk},
-        onSelectionChanged: (selection) {
-          service.setAudioMode(
-            selection.first ? CallAudioMode.pushToTalk : CallAudioMode.call,
-          );
-        },
-        showSelectedIcon: false,
-      ),
-      const SizedBox(height: AppSpacing.sm),
-      if (state.audioMode == CallAudioMode.call)
-        Container(
-          key: const Key('continuous-voice-active'),
-          height: 48,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: AppColors.success.withValues(alpha: 0.09),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.success.withValues(alpha: 0.2)),
-          ),
-          child: const Text(
-            '음성 전달 중',
-            style: TextStyle(
-              color: AppColors.success,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        )
-      else
-        GestureDetector(
-          key: const Key('push-to-talk'),
-          onTapDown: (_) => service.startTransmitting(),
-          onTapUp: (_) => service.stopTransmitting(),
-          onTapCancel: service.stopTransmitting,
-          child: Container(
-            height: 54,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: state.isTransmitting ? AppColors.primary : AppColors.navy,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Text(
-              state.isTransmitting ? '말하는 중' : '눌러서 말하기',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+      Container(
+        key: const Key('continuous-voice-active'),
+        height: 48,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColors.success.withValues(alpha: 0.09),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.success.withValues(alpha: 0.2)),
+        ),
+        child: const Text(
+          '음성 전달 중',
+          style: TextStyle(
+            color: AppColors.success,
+            fontWeight: FontWeight.w800,
           ),
         ),
+      ),
       const SizedBox(height: AppSpacing.xs),
       MicrophoneInputIndicator(
         status: state.microphoneInputStatus,

@@ -17,8 +17,14 @@ class Settings:
     gateway_id: str = os.getenv("GATEWAY_ID", "gateway-01")
     drone_id: str = os.getenv("DRONE_ID", "drone-01")
 
-    # mock: all fake / signal_pipeline: H743 MAVLink + SDR -> FPGA
+    # mock: all fake / signal_pipeline: SDR+FPGA / lora_serial: Heltec LoRa RSSI
     input_mode: str = os.getenv("INPUT_MODE", "mock")
+
+    lora_serial_port: str = os.getenv("LORA_SERIAL_PORT", "/dev/ttyUSB0")
+    lora_serial_baud_rate: int = int(os.getenv("LORA_SERIAL_BAUD_RATE", "115200"))
+    lora_serial_timeout_sec: float = float(
+        os.getenv("LORA_SERIAL_TIMEOUT_SEC", "1")
+    )
 
     sdr_mode: str = os.getenv("SDR_MODE", "mock")
     sdr_sample_rate_hz: int = int(os.getenv("SDR_SAMPLE_RATE_HZ", "2400000"))
