@@ -50,12 +50,14 @@ class DetectionSheet extends ConsumerStatefulWidget {
     required this.event,
     this.onOutcome,
     this.showCloseButton = true,
+    this.showVideo = true,
     this.status = DetectionStatus.pending,
   });
 
   final DetectionEvent event;
   final ValueChanged<DetectionOutcome>? onOutcome;
   final bool showCloseButton;
+  final bool showVideo;
   final DetectionStatus status;
 
   @override
@@ -173,11 +175,13 @@ class _DetectionSheetState extends ConsumerState<DetectionSheet> {
               DetectionStatus.falseAlarm => '현장 확인 결과 오탐으로 처리되었습니다.',
             },
           ),
-          const SizedBox(height: AppSpacing.lg),
-          Text('현장 영상', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: AppSpacing.sm),
-          WebRtcVideoView(whepUrl: event.streamUrl, height: videoHeight),
-          const SizedBox(height: AppSpacing.md),
+          if (widget.showVideo) ...[
+            const SizedBox(height: AppSpacing.lg),
+            Text('현장 영상', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: AppSpacing.sm),
+            WebRtcVideoView(whepUrl: event.streamUrl, height: videoHeight),
+            const SizedBox(height: AppSpacing.md),
+          ],
           if (!readOnly || widget.status == DetectionStatus.rescued)
             DetectionActions(
               callSessionId: event.callSessionId,
