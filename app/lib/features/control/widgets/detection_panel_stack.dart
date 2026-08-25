@@ -14,7 +14,6 @@ class DetectionPanelStack extends StatelessWidget {
     required this.maxHeight,
     required this.activeDetection,
     required this.activeDetectionStatus,
-    required this.showActiveVideo,
     required this.pendingDetections,
     required this.locationLabels,
     required this.gridDefinition,
@@ -29,7 +28,6 @@ class DetectionPanelStack extends StatelessWidget {
   final double maxHeight;
   final DetectionEvent activeDetection;
   final DetectionStatus activeDetectionStatus;
-  final bool showActiveVideo;
   final List<DetectionEvent> pendingDetections;
   final Map<String, String> locationLabels;
   final Map<String, CellBounds> gridDefinition;
@@ -54,7 +52,6 @@ class DetectionPanelStack extends StatelessWidget {
             key: ValueKey((activeDetection.detectionId, activeDetectionStatus)),
             event: activeDetection,
             status: activeDetectionStatus,
-            showVideo: showActiveVideo,
             showCloseButton: true,
             onOutcome: onOutcome,
           ),

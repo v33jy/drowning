@@ -93,25 +93,6 @@ void main() {
     expect(find.text('전화 연결'), findsOneWidget);
   });
 
-  testWidgets('기록에서 연 과거 탐지는 영상을 표시하지 않는다', (tester) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        child: MaterialApp(
-          home: Scaffold(
-            body: DetectionSheet(
-              event: event,
-              status: DetectionStatus.rescued,
-              showVideo: false,
-            ),
-          ),
-        ),
-      ),
-    );
-
-    expect(find.text('현장 영상'), findsNothing);
-    expect(find.text('요구조자 전화'), findsOneWidget);
-  });
-
   testWidgets('오탐 처리는 확인 다이얼로그 없이 바로 처리되지 않는다', (tester) async {
     await pumpSheet(tester);
 

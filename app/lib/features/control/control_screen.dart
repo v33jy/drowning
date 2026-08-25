@@ -54,7 +54,6 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
   final Set<String> _openedCandidateCells = {};
   DetectionEvent? _activeDetection;
   DetectionStatus _activeDetectionStatus = DetectionStatus.pending;
-  bool _showActiveDetectionVideo = true;
   String? _selectedCellId;
   double _searchPanelWidth = _defaultSearchPanelWidth;
   double _searchPanelHeight = _defaultSearchPanelHeight;
@@ -82,12 +81,10 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
   void _showDetection(
     DetectionEvent event, {
     DetectionStatus status = DetectionStatus.pending,
-    bool showVideo = true,
   }) => setState(() {
     _selectedCellId = null;
     _activeDetection = event;
     _activeDetectionStatus = status;
-    _showActiveDetectionVideo = showVideo;
   });
 
   void _showSearchArea(String cellId) => setState(() {
@@ -272,7 +269,6 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
           maxHeight: panelHeight,
           activeDetection: activeDetection,
           activeDetectionStatus: _activeDetectionStatus,
-          showActiveVideo: _showActiveDetectionVideo,
           pendingDetections: pendingDetections,
           locationLabels: locationLabels,
           gridDefinition: gridDefinition,
@@ -333,7 +329,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     });
     ref.listen(detectionFocusRequestProvider, (previous, next) {
       if (next != null) {
-        _showDetection(next.event, status: next.status, showVideo: false);
+        _showDetection(next.event, status: next.status);
         Future.microtask(
           () => ref.read(detectionFocusRequestProvider.notifier).state = null,
         );
