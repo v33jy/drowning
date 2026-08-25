@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 
-import '../../../config.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../models/heatmap_cell.dart';
+import '../candidate_api.dart';
 import '../providers/heatmap_provider.dart';
 import '../providers/grid_provider.dart';
 import 'search_area_guidance.dart';
@@ -94,14 +93,16 @@ class SearchAreaDetailSheet extends StatelessWidget {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => _review(cell.cellId, 'false_alarm'),
+                    onPressed: () =>
+                        _review(context, cell.cellId, 'false_alarm'),
                     child: const Text('오탐 처리'),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: FilledButton(
-                    onPressed: () => _review(cell.cellId, 'survivor_confirmed'),
+                    onPressed: () =>
+                        _review(context, cell.cellId, 'survivor_confirmed'),
                     child: const Text('요구조자 발견'),
                   ),
                 ),
@@ -114,12 +115,19 @@ class SearchAreaDetailSheet extends StatelessWidget {
     );
   }
 
-  Future<void> _review(String cellId, String outcome) async {
-    await http.put(
-      Uri.parse('${Config.baseUrl}/search/candidates/$cellId'),
-      headers: {'Content-Type': 'application/json'},
-      body: '{"outcome":"$outcome"}',
-    );
+  Future<void> _review(
+    BuildContext context,
+    String cellId,
+    String outcome,
+  ) async {
+    try {
+      await reviewCandidateRequest(cellId: cellId, outcome: outcome);
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('후보 처리에 실패했습니다. 다시 시도해 주세요.')),
+      );
+    }
   }
 }
 

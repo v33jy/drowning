@@ -1,12 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:http/http.dart' as http;
 
 import '../../config.dart';
 import '../../core/theme/app_spacing.dart';
@@ -18,6 +16,7 @@ import '../detection/providers/detection_log_provider.dart';
 import '../log/log_screen.dart';
 import '../log/providers/combined_log_provider.dart';
 import '../settings/settings_screen.dart';
+import 'candidate_api.dart';
 import 'detection_panel_selection.dart';
 import 'operational_section.dart';
 import 'providers/drones_provider.dart';
@@ -99,13 +98,30 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
   });
 
   void _handleDetectionOutcome(DetectionOutcome outcome) {
+    unawaited(_applyDetectionOutcome(outcome));
+  }
+
+  Future<void> _applyDetectionOutcome(DetectionOutcome outcome) async {
     if (!mounted) return;
     final cellId = _activeDetection?.cellId;
     if (cellId != null && outcome != DetectionOutcome.minimized) {
       final reviewOutcome = outcome == DetectionOutcome.falseAlarm
           ? 'false_alarm'
           : 'survivor_confirmed';
-      unawaited(_reviewCandidate(cellId, reviewOutcome));
+      final recorded = await _reviewCandidate(cellId, reviewOutcome);
+      if (!recorded) {
+        final detectionId = _activeDetection?.detectionId;
+        if (detectionId != null) {
+          ref
+              .read(detectionLogProvider.notifier)
+              .resolve(detectionId, DetectionStatus.pending);
+        }
+        if (mounted) {
+          setState(() => _activeDetectionStatus = DetectionStatus.pending);
+        }
+        return;
+      }
+      if (!mounted) return;
     }
     if (outcome == DetectionOutcome.minimized) {
       _closeMapPanels();
@@ -124,12 +140,18 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     }
   }
 
-  Future<void> _reviewCandidate(String cellId, String outcome) async {
-    await http.put(
-      Uri.parse('${Config.baseUrl}/search/candidates/$cellId'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'outcome': outcome}),
-    );
+  Future<bool> _reviewCandidate(String cellId, String outcome) async {
+    try {
+      await reviewCandidateRequest(cellId: cellId, outcome: outcome);
+      return true;
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('후보 처리에 실패했습니다. 다시 시도해 주세요.')),
+        );
+      }
+      return false;
+    }
   }
 
   Future<void> _openCandidateOnArrival(String cellId, int droneId) async {
@@ -138,15 +160,11 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     if (cell == null || !cell.needsRecheck) return;
     _openedCandidateCells.add(cellId);
     try {
-      await http.post(
-        Uri.parse('${Config.baseUrl}/detection'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'drone_id': droneId,
-          'cell_id': cellId,
-          'rss_dbm': cell.rssDbm ?? cell.latestRssDbm ?? -65.0,
-          'stream_url': Config.videoWhepUrl,
-        }),
+      await reportCandidateDetection(
+        droneId: droneId,
+        cellId: cellId,
+        signal: cell.rssDbm ?? cell.latestRssDbm ?? -65.0,
+        streamUrl: Config.videoWhepUrl,
       );
     } catch (_) {
       _openedCandidateCells.remove(cellId);
