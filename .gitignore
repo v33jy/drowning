@@ -3,6 +3,10 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+.env
+**/.env
+!.env.example
+!**/.env.example
 
 # Local MediaMTX runtime artifacts
 /auto.crt

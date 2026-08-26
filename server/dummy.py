@@ -16,7 +16,7 @@ import os
 import random
 import time
 
-import httpx
+import httpx2 as httpx
 
 BASE_URL = os.environ.get("DRONE_SERVER_URL", "http://localhost:8000")
 

@@ -1,5 +1,9 @@
 import math
+import logging
 import random
+import signal
+import sys
+import threading
 import time
 from collections.abc import Iterator
 from typing import Optional
@@ -23,6 +27,32 @@ _TARGET_LAT, _TARGET_LNG = 37.5044, 127.0248
 _APPROACH_STEPS = 30
 _SIGNAL_PIPELINE_MODE = "signal_pipeline"
 _LORA_SERIAL_MODE = "lora_serial"
+logger = logging.getLogger(__name__)
+_stop_event = threading.Event()
+
+
+def configure_logging() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+
+def _request_stop(signum, _frame) -> None:
+    logger.info("Shutdown requested by signal %s", signum)
+    _stop_event.set()
+
+
+def _close_resource(name: str, resource) -> None:
+    if resource is None:
+        return
+    close = getattr(resource, "close", None)
+    if close is None:
+        return
+    try:
+        close()
+    except Exception:
+        logger.exception("Failed to close %s", name)
 
 
 def _build_mock_observation(
@@ -91,10 +121,9 @@ def generate_signal_measurements() -> Iterator[SignalMeasurement]:
     try:
         while True:
             result = pipeline.process_next_frame()
-            print(
-                f"[SIGNAL] sequence={result.sequence} "
-                f"peak_bin={result.peak_bin} rss={result.rss_dbm:.2f}dBm "
-                f"detected={result.detected}"
+            logger.info(
+                "Signal sequence=%s peak_bin=%s rss=%.2fdBm detected=%s",
+                result.sequence, result.peak_bin, result.rss_dbm, result.detected,
             )
 
             yield SignalMeasurement(
@@ -115,18 +144,15 @@ def get_measurement_source(
     mode = settings.input_mode.lower()
 
     if mode == "mock":
-        print("[input mode] mock test data")
+        logger.info("Input mode: mock test data")
         return generate_mock_observations()
 
     if mode == _SIGNAL_PIPELINE_MODE:
-        print("[input mode] H743 MAVLink + SDR -> FPGA signal pipeline")
+        logger.info("Input mode: H743 MAVLink + SDR -> FPGA signal pipeline")
         return generate_signal_measurements()
 
     if mode == _LORA_SERIAL_MODE:
-        print(
-            "[input mode] Heltec LoRa RSSI serial "
-            f"port={settings.lora_serial_port}"
-        )
+        logger.info("Input mode: Heltec LoRa RSSI serial port=%s", settings.lora_serial_port)
         return LoRaSerialSource(
             port=settings.lora_serial_port,
             baud_rate=settings.lora_serial_baud_rate,
@@ -147,13 +173,10 @@ def _try_send_detection(
     """Skip sending if cell_id is missing (outside the grid) — the server
     would reject it with 422 anyway, so don't waste retries on it."""
     if cell_id is None:
-        print(
-            f"[detection skipped] drone={drone_id} rss={rss_dbm}dBm — "
-            "outside grid, no cell_id, skipping /detection"
-        )
+        logger.warning("Detection skipped outside grid: drone=%s rss=%sdBm", drone_id, rss_dbm)
         return
 
-    print(f"[detected] drone={drone_id} rss={rss_dbm}dBm cell={cell_id}")
+    logger.info("Detected: drone=%s rss=%sdBm cell=%s", drone_id, rss_dbm, cell_id)
     client.send_detection(drone_id, cell_id, rss_dbm)
 
 
@@ -192,28 +215,23 @@ def detection_requested(observation: SignalObservation) -> bool:
     )
 
 
-def main() -> None:
-    print("=" * 50)
-    print("Raspberry Pi Drone Gateway starting")
-    print("=" * 50)
-
-    print(f"Gateway ID     : {settings.gateway_id}")
-    print(f"Input Mode     : {settings.input_mode}")
-    print(f"Server URL     : {settings.server_url}")
-    print(f"Detection Mode : {settings.detection_mode}")
-    print(
-        "MAVLink        : "
-        f"{settings.input_mode.lower() in (_SIGNAL_PIPELINE_MODE, _LORA_SERIAL_MODE)}"
+def main() -> int:
+    _stop_event.clear()
+    logger.info(
+        "Gateway starting: gateway=%s input=%s server=%s detection=%s mavlink=%s dry_run=%s",
+        settings.gateway_id, settings.input_mode, settings.server_url,
+        settings.detection_mode,
+        settings.input_mode.lower() in (_SIGNAL_PIPELINE_MODE, _LORA_SERIAL_MODE),
+        settings.dry_run,
     )
-    print(f"Dry Run        : {settings.dry_run}")
-    print("=" * 50)
 
     client = GatewayClient(
         server_url=settings.server_url,
         gateway_id=settings.gateway_id,
         timeout=settings.request_timeout,
         max_retries=settings.max_retries,
-        dry_run=settings.dry_run
+        dry_run=settings.dry_run,
+        stop_event=_stop_event,
     )
     camera = CameraController(
         publisher=H264RtspPublisher.from_settings(settings),
@@ -236,15 +254,14 @@ def main() -> None:
                 reconnect_delay_sec=settings.fc_reconnect_delay_sec,
             )
             mavlink_service.start()
-            print(
-                f"[MAVLink] enabled port={settings.fc_serial_port} "
-                f"baud={settings.fc_baud_rate}"
-            )
+            logger.info("MAVLink enabled: port=%s baud=%s", settings.fc_serial_port, settings.fc_baud_rate)
 
         measurement_source = get_measurement_source()
 
         for measurement in measurement_source:
-            print(f"\n[Gateway] measurement={measurement}")
+            if _stop_event.is_set():
+                break
+            logger.debug("Measurement received: %r", measurement)
 
             if mavlink_service is not None:
                 if not isinstance(measurement, SignalMeasurement):
@@ -255,10 +272,7 @@ def main() -> None:
                     settings.fc_position_max_age_sec
                 )
                 if flight_data is None:
-                    print(
-                        "[MAVLink] no fresh GPS/battery telemetry; "
-                        "signal sample skipped"
-                    )
+                    logger.warning("No fresh MAVLink GPS/battery telemetry; signal sample skipped")
                     continue
                 observation = combine_measurements(
                     measurement,
@@ -272,7 +286,7 @@ def main() -> None:
                     )
                 observation = measurement
 
-            print(f"[Gateway] ready={observation}")
+            logger.debug("Observation ready: %r", observation)
 
             response = client.send_telemetry(
                 observation.telemetry_payload()
@@ -304,24 +318,25 @@ def main() -> None:
                 _try_send_detection(client, drone_id, cell_id, rssi)
 
     except KeyboardInterrupt:
-        print("\n[stopped] interrupted by user.")
+        logger.info("Interrupted by user")
+        return 0
 
-    except Exception as error:
-        print(f"\n[fatal error] {error}")
+    except Exception:
+        logger.exception("Fatal gateway error")
+        return 1
 
     finally:
-        if mavlink_service is not None:
-            mavlink_service.close()
+        _close_resource("MAVLink service", mavlink_service)
+        _close_resource("measurement source", measurement_source)
+        _close_resource("HTTP client", client)
+        _close_resource("camera", camera)
+        logger.info("Gateway connections closed")
 
-        if measurement_source is not None:
-            close = getattr(measurement_source, "close", None)
-            if close is not None:
-                close()
-
-        client.close()
-        camera.close()
-        print("[stopped] gateway connections closed.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    configure_logging()
+    signal.signal(signal.SIGINT, _request_stop)
+    signal.signal(signal.SIGTERM, _request_stop)
+    sys.exit(main())

@@ -3,7 +3,7 @@ import '../../services/call_service.dart';
 
 /// Chooses which pending detection remains open when a new alert arrives.
 ///
-/// A call in progress takes precedence so its hang-up and PTT controls never
+/// A call in progress takes precedence so its call controls never
 /// become inaccessible behind newer notifications.
 DetectionEvent selectDetectionForDisplay({
   required List<DetectionEvent> pendingDetections,

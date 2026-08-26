@@ -12,13 +12,15 @@ LoRa 송신 보드에 보낸 탐지 결과를, 지상국의 Heltec LoRa 수신 �
 바꿔야 관제 앱까지 실제로 데이터가 이어진다.
 """
 
-import os
-import time
+import logging
+import signal
+import threading
 from typing import Optional
 
-SERIAL_PORT = os.getenv("SERIAL_PORT", "COM5")
-BAUD_RATE = int(os.getenv("BAUD_RATE", "115200"))
-SERIAL_RECONNECT_DELAY_SEC = float(os.getenv("SERIAL_RECONNECT_DELAY_SEC", "2"))
+from config import ConfigurationError, Settings
+from logging_config import configure_logging
+
+logger = logging.getLogger(__name__)
 
 
 def parse_fpga_data(raw_data: str) -> Optional[dict]:
@@ -41,7 +43,7 @@ def parse_fpga_data(raw_data: str) -> Optional[dict]:
         }
 
     except ValueError:
-        print(f"[parse error] {raw_data!r}")
+        logger.warning("Invalid FPGA data: %r", raw_data)
         return None
 
 
@@ -56,16 +58,17 @@ def report_detection(detection: dict) -> None:
     cell_id를 채워서 보내도록 채울 것 — pi/gateway/client.py의 GatewayClient
     패턴 참고.
     """
-    print(
-        f"[detection — 서버 전송 보류, cell_id 없음] "
-        f"detected={detection['detected']} "
-        f"fft_bin={detection['fft_bin']} "
-        f"magnitude={detection['magnitude']}"
+    logger.info(
+        "Detection held locally because cell_id is unavailable: "
+        "detected=%s fft_bin=%s magnitude=%s",
+        detection["detected"],
+        detection["fft_bin"],
+        detection["magnitude"],
     )
 
 
 def handle_line(line: str) -> None:
-    print("[ESP32]", line)
+    logger.debug("ESP32: %s", line)
 
     if line.startswith("LORA RX DATA:"):
         data = line.replace("LORA RX DATA:", "", 1).strip()
@@ -78,10 +81,10 @@ def handle_line(line: str) -> None:
         # LoRa 무선 링크 자체의 품질 지표(두 Heltec 보드 사이 수신 감도) —
         # 드론이 감지한 목표 신호의 세기(rss_dbm)와는 다른 값이라 서버로는
         # 안 보내고, 지상국에서 링크 상태 확인용으로만 출력한다.
-        print("[link]", line)
+        logger.info("LoRa link: %s", line)
 
 
-def run_serial_reader() -> None:
+def run_serial_reader(settings: Settings, stop_event: threading.Event) -> None:
     """UART 한 줄씩 읽는다. 연결이 끊기면(케이블 재꽂기 등) 죽지 않고
     자동으로 재연결한다 — pi/gateway의 시리얼 재연결 로직과 동일한 패턴.
 
@@ -90,16 +93,25 @@ def run_serial_reader() -> None:
     돌아가게 하기 위함."""
     from serial import Serial, SerialException
 
-    while True:
+    while not stop_event.is_set():
         try:
-            print(f"[SERIAL connecting] port={SERIAL_PORT}, baud={BAUD_RATE}")
+            logger.info(
+                "Connecting serial port=%s baud=%s",
+                settings.serial_port,
+                settings.baud_rate,
+            )
 
-            with Serial(SERIAL_PORT, BAUD_RATE, timeout=1) as receiver:
+            with Serial(
+                settings.serial_port,
+                settings.baud_rate,
+                timeout=settings.serial_timeout_sec,
+            ) as receiver:
                 # ESP32가 USB 연결 시 재부팅될 수 있어서 잠시 대기
-                time.sleep(2)
-                print("[SERIAL connected]")
+                if stop_event.wait(2):
+                    return
+                logger.info("Serial connected")
 
-                while True:
+                while not stop_event.is_set():
                     raw_line = receiver.readline()
 
                     if not raw_line:
@@ -110,26 +122,44 @@ def run_serial_reader() -> None:
                     if line:
                         handle_line(line)
 
-        except SerialException as error:
-            print(
-                f"[SERIAL disconnected] {error} — "
-                f"retrying in {SERIAL_RECONNECT_DELAY_SEC}s"
+        except (SerialException, OSError) as error:
+            logger.warning(
+                "Serial disconnected: %s; retrying in %.1fs",
+                error,
+                settings.reconnect_delay_sec,
             )
-            time.sleep(SERIAL_RECONNECT_DELAY_SEC)
+            stop_event.wait(settings.reconnect_delay_sec)
 
 
-def main() -> None:
-    print("=" * 50)
-    print("지상국 LoRa 게이트웨이 시작")
-    print(f"Serial Port : {SERIAL_PORT}")
-    print("=" * 50)
+def main() -> int:
+    try:
+        settings = Settings.from_env()
+    except ConfigurationError as error:
+        configure_logging("ERROR")
+        logger.error("Invalid configuration: %s", error)
+        return 2
+
+    configure_logging(settings.log_level)
+    stop_event = threading.Event()
+
+    def request_stop(signum, _frame) -> None:
+        logger.info("Received signal %s; stopping", signum)
+        stop_event.set()
+
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
+    logger.info("Ground station starting serial_port=%s", settings.serial_port)
 
     try:
-        run_serial_reader()
-
-    except KeyboardInterrupt:
-        print("\n[stopped] interrupted by user.")
+        run_serial_reader(settings, stop_event)
+    except Exception:
+        logger.exception("Ground station stopped unexpectedly")
+        return 1
+    finally:
+        stop_event.set()
+        logger.info("Ground station stopped")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

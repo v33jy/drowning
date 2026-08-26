@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+import asyncio
 
 from fastapi import WebSocket
+
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -37,15 +40,26 @@ class ConnectionManager:
         if not self._clients:
             return
         payload = json.dumps(message, ensure_ascii=False)
-        dead: list[WebSocket] = []
-        for ws in list(self._clients):  # snapshot
+        clients = list(self._clients)
+
+        async def send(ws: WebSocket) -> WebSocket | None:
             try:
-                await ws.send_text(payload)
-            except Exception:
-                dead.append(ws)
+                await asyncio.wait_for(
+                    ws.send_text(payload),
+                    timeout=config.WS_SEND_TIMEOUT_SECONDS,
+                )
+                return None
+            except Exception as error:
+                logger.warning("WebSocket send failed; removing client: %s", error)
+                return ws
+
+        dead = [
+            ws
+            for ws in await asyncio.gather(*(send(ws) for ws in clients))
+            if ws is not None
+        ]
         for ws in dead:
             try:
                 self._clients.remove(ws)
             except ValueError:
                 pass  # disconnect() already removed it
-            logger.warning("Removed dead WebSocket client.")

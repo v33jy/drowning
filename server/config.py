@@ -1,6 +1,46 @@
 import json
+import math
 import os
 from pathlib import Path
+from urllib.parse import urlparse
+
+
+def _env_int(name: str, default: int, *, minimum: int | None = None) -> int:
+    raw = os.getenv(name, str(default))
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise RuntimeError(f"{name} must be an integer, got {raw!r}") from error
+    if minimum is not None and value < minimum:
+        raise RuntimeError(f"{name} must be at least {minimum}, got {value}")
+    return value
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name, str(default))
+    try:
+        value = float(raw)
+    except ValueError as error:
+        raise RuntimeError(f"{name} must be a number, got {raw!r}") from error
+    if not math.isfinite(value):
+        raise RuntimeError(f"{name} must be a finite number, got {raw!r}")
+    return value
+
+
+def _env_origins(name: str = "CORS_ORIGINS") -> list[str]:
+    raw = os.getenv(name, "*")
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    if not origins:
+        raise RuntimeError(f"{name} must contain at least one origin")
+    for origin in origins:
+        if origin == "*":
+            continue
+        parsed = urlparse(origin)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise RuntimeError(
+                f"{name} contains an invalid HTTP(S) origin: {origin!r}"
+            )
+    return origins
 
 # ---------------------------------------------------------------------------
 # Grid configuration — override via environment variables if needed.
@@ -17,12 +57,16 @@ _DEFAULT_LNG_MAX = 127.03787821636527
 _DEFAULT_GRID_ROWS = 10
 _DEFAULT_GRID_COLS = 10
 
-LAT_MIN: float = float(os.getenv("GRID_LAT_MIN", str(_DEFAULT_LAT_MIN)))
-LAT_MAX: float = float(os.getenv("GRID_LAT_MAX", str(_DEFAULT_LAT_MAX)))
-LNG_MIN: float = float(os.getenv("GRID_LNG_MIN", str(_DEFAULT_LNG_MIN)))
-LNG_MAX: float = float(os.getenv("GRID_LNG_MAX", str(_DEFAULT_LNG_MAX)))
-GRID_ROWS: int = int(os.getenv("GRID_ROWS", str(_DEFAULT_GRID_ROWS)))
-GRID_COLS: int = int(os.getenv("GRID_COLS", str(_DEFAULT_GRID_COLS)))
+LAT_MIN: float = _env_float("GRID_LAT_MIN", _DEFAULT_LAT_MIN)
+LAT_MAX: float = _env_float("GRID_LAT_MAX", _DEFAULT_LAT_MAX)
+LNG_MIN: float = _env_float("GRID_LNG_MIN", _DEFAULT_LNG_MIN)
+LNG_MAX: float = _env_float("GRID_LNG_MAX", _DEFAULT_LNG_MAX)
+GRID_ROWS: int = _env_int("GRID_ROWS", _DEFAULT_GRID_ROWS, minimum=1)
+GRID_COLS: int = _env_int("GRID_COLS", _DEFAULT_GRID_COLS, minimum=1)
+if LAT_MIN >= LAT_MAX:
+    raise RuntimeError("GRID_LAT_MIN must be less than GRID_LAT_MAX")
+if LNG_MIN >= LNG_MAX:
+    raise RuntimeError("GRID_LNG_MIN must be less than GRID_LNG_MAX")
 
 # Responder-facing names for grid cells. Configure these during operation-area
 # setup so the UI can use stable landmarks without depending on live geocoding.
@@ -42,7 +86,18 @@ def _load_grid_landmarks(
     uses_default_grid: bool,
 ) -> dict[str, str]:
     if configured_landmarks is not None:
-        return json.loads(configured_landmarks)
+        try:
+            landmarks = json.loads(configured_landmarks)
+        except json.JSONDecodeError as error:
+            raise RuntimeError("GRID_LANDMARKS must be a valid JSON object") from error
+        if not isinstance(landmarks, dict) or not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in landmarks.items()
+        ):
+            raise RuntimeError(
+                "GRID_LANDMARKS must be a JSON object mapping cell IDs to string labels"
+            )
+        return landmarks
     if not uses_default_grid:
         return {}
 
@@ -76,6 +131,14 @@ def _load_grid_priorities(path: str | os.PathLike[str]) -> tuple[int, dict[str, 
     except json.JSONDecodeError as error:
         raise RuntimeError(
             f"Grid priority file is not valid JSON: {priority_path}"
+        ) from error
+    except PermissionError as error:
+        raise RuntimeError(
+            f"Grid priority file is not readable (permission denied): {priority_path}"
+        ) from error
+    except OSError as error:
+        raise RuntimeError(
+            f"Could not read grid priority file {priority_path}: {error}"
         ) from error
 
     default_priority = payload.get("default_priority", 3)
@@ -127,22 +190,22 @@ def grid_priority(cell_id: str) -> int:
 # Preliminary search-area classification. These are operational tuning values,
 # not validated probabilities; field tests should calibrate them per radio and
 # environment without requiring code changes.
-SEARCH_RECENT_WINDOW: int = max(1, int(os.getenv("SEARCH_RECENT_WINDOW", "10")))
-SEARCH_RECHECK_RSS_DBM: float = float(
-    os.getenv("SEARCH_RECHECK_RSS_DBM", "-65.0")
-)
+SEARCH_RECENT_WINDOW: int = _env_int("SEARCH_RECENT_WINDOW", 10, minimum=1)
+SEARCH_RECHECK_RSS_DBM: float = _env_float("SEARCH_RECHECK_RSS_DBM", -65.0)
 SEARCH_RECHECK_MIN_SAMPLES: int = max(
     1,
     min(
         SEARCH_RECENT_WINDOW,
-        int(os.getenv("SEARCH_RECHECK_MIN_SAMPLES", "3")),
+        _env_int("SEARCH_RECHECK_MIN_SAMPLES", 3, minimum=1),
     ),
 )
 SEARCH_CANDIDATE_MIN_SCORE: float = min(
-    1.0, max(0.0, float(os.getenv("SEARCH_CANDIDATE_MIN_SCORE", "0.55")))
+    1.0, max(0.0, _env_float("SEARCH_CANDIDATE_MIN_SCORE", 0.55))
 )
-SEARCH_RSS_FLOOR_DBM: float = float(os.getenv("SEARCH_RSS_FLOOR_DBM", "-100"))
-SEARCH_RSS_CEILING_DBM: float = float(os.getenv("SEARCH_RSS_CEILING_DBM", "-40"))
+SEARCH_RSS_FLOOR_DBM: float = _env_float("SEARCH_RSS_FLOOR_DBM", -100)
+SEARCH_RSS_CEILING_DBM: float = _env_float("SEARCH_RSS_CEILING_DBM", -40)
+if SEARCH_RSS_FLOOR_DBM >= SEARCH_RSS_CEILING_DBM:
+    raise RuntimeError("SEARCH_RSS_FLOOR_DBM must be less than SEARCH_RSS_CEILING_DBM")
 
 # Maximum number of detection events kept in memory for late-joining clients.
 MAX_DETECTIONS: int = 50
@@ -150,11 +213,16 @@ MAX_DETECTIONS: int = 50
 # Raw RSS measurements retained for search-history analysis. This remains
 # in-memory for the MVP, but is deliberately bounded so a long-running server
 # cannot grow without limit.
-MAX_SIGNAL_READINGS: int = max(
-    1, int(os.getenv("MAX_SIGNAL_READINGS", "10000"))
-)
+MAX_SIGNAL_READINGS: int = _env_int("MAX_SIGNAL_READINGS", 10000, minimum=1)
 
 # Set this when MediaMTX is not hosted alongside the API server. When omitted,
 # the detection endpoint derives a client-reachable URL from the request host.
 MEDIAMTX_WHEP_URL: str | None = os.getenv("MEDIAMTX_WHEP_URL")
-MEDIAMTX_WHEP_PORT: int = int(os.getenv("MEDIAMTX_WHEP_PORT", "8889"))
+MEDIAMTX_WHEP_PORT: int = _env_int("MEDIAMTX_WHEP_PORT", 8889, minimum=1)
+if MEDIAMTX_WHEP_PORT > 65535:
+    raise RuntimeError("MEDIAMTX_WHEP_PORT must be at most 65535")
+
+CORS_ORIGINS: list[str] = _env_origins()
+WS_SEND_TIMEOUT_SECONDS: float = _env_float("WS_SEND_TIMEOUT_SECONDS", 2.0)
+if WS_SEND_TIMEOUT_SECONDS <= 0:
+    raise RuntimeError("WS_SEND_TIMEOUT_SECONDS must be greater than 0")

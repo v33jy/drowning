@@ -31,9 +31,7 @@ class SurvivorCallController extends ChangeNotifier {
 
   final Duration connectionAttemptTimeout;
   CallPhase phase = CallPhase.waiting;
-  AudioMode audioMode = AudioMode.call;
   bool isMuted = false;
-  bool isTransmitting = false;
 
   WebSocketChannel? _listener;
   WebSocketChannel? _signaling;
@@ -51,43 +49,70 @@ class SurvivorCallController extends ChangeNotifier {
   String? _sessionId;
   int _retryAttempt = 0;
   int _connectionGeneration = 0;
+  int _listenerGeneration = 0;
   static const maxReconnectAttempts = 3;
 
   int get retryAttempt => _retryAttempt;
 
   Future<void> start() async {
     if (_disposed) return;
+    final generation = ++_listenerGeneration;
     _listenerReconnectTimer?.cancel();
+    _listenerReconnectTimer = null;
+    final previousSubscription = _listenerSubscription;
+    final previousListener = _listener;
+    _listenerSubscription = null;
+    _listener = null;
+    await previousSubscription?.cancel();
+    await previousListener?.sink.close();
+    if (!_isCurrentListener(generation)) return;
     try {
-      _listener = WebSocketChannel.connect(
+      final listener = WebSocketChannel.connect(
         Uri.parse(ServerConfig.ws('/survivors/listen')),
       );
-      await _listener!.ready;
-      _listenerSubscription = _listener!.stream.listen(
-        _handleIncoming,
+      _listener = listener;
+      await listener.ready;
+      if (!_isCurrentListener(generation)) {
+        await listener.sink.close();
+        return;
+      }
+      _listenerSubscription = listener.stream.listen(
+        (raw) => _handleIncoming(raw, generation),
         onError: (Object error) {
           debugPrint('통화 대기 연결 오류: $error');
-          _scheduleReconnect();
+          _scheduleReconnect(generation);
         },
-        onDone: _scheduleReconnect,
+        onDone: () => _scheduleReconnect(generation),
       );
     } catch (error) {
       debugPrint('통화 대기 서버에 연결하지 못했습니다: $error');
-      _scheduleReconnect();
+      _scheduleReconnect(generation);
     }
   }
 
-  void _scheduleReconnect() {
-    if (_disposed) return;
+  bool _isCurrentListener(int generation) =>
+      !_disposed && generation == _listenerGeneration;
+
+  void _scheduleReconnect(int generation) {
+    if (!_isCurrentListener(generation)) return;
     _listenerSubscription?.cancel();
     _listenerSubscription = null;
     _listener = null;
-    _listenerReconnectTimer?.cancel();
-    _listenerReconnectTimer = Timer(const Duration(seconds: 3), start);
+    if (_listenerReconnectTimer?.isActive ?? false) return;
+    _listenerReconnectTimer = Timer(const Duration(seconds: 3), () {
+      if (_isCurrentListener(generation)) start();
+    });
   }
 
-  Future<void> _handleIncoming(dynamic raw) async {
-    final message = jsonDecode(raw as String) as Map<String, dynamic>;
+  Future<void> _handleIncoming(dynamic raw, int generation) async {
+    if (!_isCurrentListener(generation)) return;
+    Map<String, dynamic> message;
+    try {
+      message = jsonDecode(raw as String) as Map<String, dynamic>;
+    } catch (error) {
+      debugPrint('잘못된 통화 대기 메시지를 무시했습니다: $error');
+      return;
+    }
     if (message['type'] != 'incoming_call' || phase != CallPhase.waiting) {
       return;
     }
@@ -127,12 +152,17 @@ class SurvivorCallController extends ChangeNotifier {
         await _peer!.addTrack(track, _localStream!);
       }
 
-      _signaling = WebSocketChannel.connect(
+      final signaling = WebSocketChannel.connect(
         Uri.parse(ServerConfig.ws('/calls/$sessionId/survivor')),
       );
-      await _signaling!.ready;
-      _signalingSubscription = _signaling!.stream.listen(
-        _handleSignal,
+      _signaling = signaling;
+      await signaling.ready;
+      if (!_isCurrentCall(generation, sessionId)) {
+        await signaling.sink.close();
+        return;
+      }
+      _signalingSubscription = signaling.stream.listen(
+        (raw) => _handleSignal(raw, sessionId, generation),
         onError: (Object error) {
           debugPrint('통화 signaling 연결 오류: $error');
           _handleCallFailure(sessionId, generation);
@@ -159,7 +189,7 @@ class SurvivorCallController extends ChangeNotifier {
           _callConnectionAttemptTimer?.cancel();
           _retryAttempt = 0;
           phase = CallPhase.active;
-          _applyAudioMode();
+          _setMicrophoneEnabled(!isMuted);
           notifyListeners();
         } else if (connectionState ==
                 RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
@@ -183,7 +213,6 @@ class SurvivorCallController extends ChangeNotifier {
   Future<void> _handleCallFailure(String sessionId, int generation) async {
     if (!_isCurrentCall(generation, sessionId)) return;
     _setMicrophoneEnabled(false);
-    isTransmitting = false;
     _connectionGeneration++;
     await _closeCallConnection(keepLocalStream: true);
     if (_disposed || _ending || _sessionId != sessionId) return;
@@ -218,8 +247,19 @@ class SurvivorCallController extends ChangeNotifier {
     await _connectCall(sessionId);
   }
 
-  Future<void> _handleSignal(dynamic raw) async {
-    final message = jsonDecode(raw as String) as Map<String, dynamic>;
+  Future<void> _handleSignal(
+    dynamic raw,
+    String sessionId,
+    int generation,
+  ) async {
+    if (!_isCurrentCall(generation, sessionId)) return;
+    Map<String, dynamic> message;
+    try {
+      message = jsonDecode(raw as String) as Map<String, dynamic>;
+    } catch (error) {
+      debugPrint('잘못된 signaling 메시지를 무시했습니다: $error');
+      return;
+    }
     switch (message['type']) {
       case 'offer':
         await _peer?.setRemoteDescription(
@@ -261,45 +301,11 @@ class SurvivorCallController extends ChangeNotifier {
     _signaling?.sink.add(jsonEncode(message));
   }
 
-  void startTransmitting() {
-    if (_disposed ||
-        phase != CallPhase.active ||
-        audioMode != AudioMode.pushToTalk) {
-      return;
-    }
-    _setMicrophoneEnabled(true);
-    isTransmitting = true;
-    notifyListeners();
-  }
-
-  void stopTransmitting() {
-    if (_disposed || !isTransmitting) return;
-    _setMicrophoneEnabled(false);
-    isTransmitting = false;
-    notifyListeners();
-  }
-
-  void setAudioMode(AudioMode mode) {
-    if (_disposed || audioMode == mode) return;
-    isTransmitting = false;
-    audioMode = mode;
-    _applyAudioMode();
-    notifyListeners();
-  }
-
   void toggleMute() {
-    if (_disposed || phase != CallPhase.active || audioMode != AudioMode.call) {
-      return;
-    }
+    if (_disposed || phase != CallPhase.active) return;
     isMuted = !isMuted;
     _setMicrophoneEnabled(!isMuted);
     notifyListeners();
-  }
-
-  void _applyAudioMode() {
-    _setMicrophoneEnabled(
-      phase == CallPhase.active && audioMode == AudioMode.call && !isMuted,
-    );
   }
 
   void _setMicrophoneEnabled(bool enabled) {
@@ -312,7 +318,6 @@ class SurvivorCallController extends ChangeNotifier {
   Future<void> endCall({bool notifyPeer = true}) async {
     if (phase == CallPhase.waiting) return;
     _setMicrophoneEnabled(false);
-    isTransmitting = false;
     _ending = true;
     _callReconnectTimer?.cancel();
     _connectionGeneration++;
@@ -356,6 +361,7 @@ class SurvivorCallController extends ChangeNotifier {
     _disposed = true;
     _ending = true;
     _connectionGeneration++;
+    _listenerGeneration++;
     _listenerReconnectTimer?.cancel();
     _callReconnectTimer?.cancel();
     _callConnectionAttemptTimer?.cancel();

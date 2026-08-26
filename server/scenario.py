@@ -12,7 +12,7 @@ import math
 import os
 from typing import Any
 
-import httpx
+import httpx2 as httpx
 
 import config
 from route_planner import cell_center

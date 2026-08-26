@@ -33,17 +33,18 @@ class PostWithRetryTests(unittest.TestCase):
     def tearDown(self):
         self.client.close()
 
-    @patch("client.time.sleep")
-    def test_succeeds_first_try(self, mock_sleep):
+    def test_succeeds_first_try(self):
         with patch.object(self.client.session, "post", return_value=_ok_response({"ok": True})) as mock_post:
             result = self.client._post_with_retry("/x", {"a": 1})
 
         self.assertEqual(result, {"ok": True})
         mock_post.assert_called_once()
-        mock_sleep.assert_not_called()
 
-    @patch("client.time.sleep")
-    def test_retries_then_succeeds(self, mock_sleep):
+    @patch("client.random.uniform", return_value=0)
+    def test_retries_then_succeeds(self, _mock_random):
+        self.client.stop_event = MagicMock()
+        self.client.stop_event.is_set.return_value = False
+        self.client.stop_event.wait.return_value = False
         with patch.object(
             self.client.session, "post",
             side_effect=[requests.RequestException("boom"), _ok_response({"ok": True})],
@@ -52,10 +53,9 @@ class PostWithRetryTests(unittest.TestCase):
 
         self.assertEqual(result, {"ok": True})
         self.assertEqual(mock_post.call_count, 2)
-        mock_sleep.assert_called_once()
+        self.client.stop_event.wait.assert_called_once_with(1)
 
-    @patch("client.time.sleep")
-    def test_gives_up_after_max_retries(self, mock_sleep):
+    def test_gives_up_after_max_retries(self):
         with patch.object(
             self.client.session, "post", side_effect=requests.RequestException("boom"),
         ) as mock_post:
@@ -63,6 +63,20 @@ class PostWithRetryTests(unittest.TestCase):
 
         self.assertIsNone(result)
         self.assertEqual(mock_post.call_count, self.client.max_retries)
+
+    def test_does_not_retry_non_retryable_400(self):
+        response = MagicMock(status_code=400, text="bad request")
+        with patch.object(self.client.session, "post", return_value=response) as mock_post:
+            self.assertIsNone(self.client._post_with_retry("/x", {}))
+        mock_post.assert_called_once()
+
+    def test_retry_wait_is_interruptible(self):
+        self.client.stop_event = MagicMock()
+        self.client.stop_event.is_set.return_value = False
+        self.client.stop_event.wait.return_value = True
+        with patch.object(self.client.session, "post", side_effect=requests.ConnectionError("offline")) as mock_post:
+            self.assertIsNone(self.client._post_with_retry("/x", {}))
+        mock_post.assert_called_once()
 
     def test_dry_run_skips_network(self):
         dry_client = GatewayClient(server_url="http://example.test", gateway_id="gw", dry_run=True)

@@ -14,8 +14,6 @@ export 'microphone_permission_guidance.dart' show CallRecoveryAction;
 
 enum CallStatus { idle, connecting, active, reconnecting, disconnected }
 
-enum CallAudioMode { call, pushToTalk }
-
 enum MicrophoneInputStatus { idle, checking, detected, silent, unavailable }
 
 Future<PermissionStatus> _currentMicrophonePermissionStatus() =>
@@ -28,8 +26,6 @@ class CallState {
     this.sessionId,
     this.retryAttempt = 0,
     this.message,
-    this.audioMode = CallAudioMode.call,
-    this.isTransmitting = false,
     this.microphoneInputStatus = MicrophoneInputStatus.idle,
     this.microphoneLevel = 0,
     this.recoveryAction = CallRecoveryAction.retry,
@@ -39,8 +35,6 @@ class CallState {
   final String? sessionId;
   final int retryAttempt;
   final String? message;
-  final CallAudioMode audioMode;
-  final bool isTransmitting;
   final MicrophoneInputStatus microphoneInputStatus;
   final double microphoneLevel;
   final CallRecoveryAction recoveryAction;
@@ -112,11 +106,7 @@ class CallService extends StateNotifier<CallState> {
     final sessionId = state.sessionId;
     if (_disposed || !state.canRetry || sessionId == null) return;
     _reconnectTimer?.cancel();
-    state = CallState(
-      CallStatus.connecting,
-      sessionId: sessionId,
-      audioMode: state.audioMode,
-    );
+    state = CallState(CallStatus.connecting, sessionId: sessionId);
     await _connect(sessionId, isReconnect: false);
   }
 
@@ -125,7 +115,7 @@ class CallService extends StateNotifier<CallState> {
     if (Config.demoMode) {
       await Future<void>.delayed(const Duration(milliseconds: 600));
       if (_isCurrent(generation, sessionId)) {
-        _activateSelectedAudioMode(sessionId);
+        _activateCall(sessionId);
       }
       return;
     }
@@ -142,7 +132,6 @@ class CallService extends StateNotifier<CallState> {
               CallStatus.disconnected,
               sessionId: sessionId,
               message: guidance.message,
-              audioMode: state.audioMode,
               recoveryAction: guidance.recoveryAction,
             );
             return;
@@ -196,7 +185,7 @@ class CallService extends StateNotifier<CallState> {
         if (connectionState ==
             RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
           _connectionAttemptTimer?.cancel();
-          _activateSelectedAudioMode(sessionId);
+          _activateCall(sessionId);
         } else if (connectionState ==
             RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
           _handleTransientFailure(sessionId, generation, '음성 연결이 불안정합니다.');
@@ -226,7 +215,6 @@ class CallService extends StateNotifier<CallState> {
     _stopMicrophoneLevelMonitoring();
     _setMicrophoneEnabled(false);
     final attempt = state.retryAttempt + 1;
-    final audioMode = state.audioMode;
     _connectionGeneration++;
     await _closeConnection(keepLocalStream: true);
     if (_disposed || _ending || state.sessionId != sessionId) return;
@@ -238,7 +226,6 @@ class CallService extends StateNotifier<CallState> {
         sessionId: sessionId,
         retryAttempt: maxReconnectAttempts,
         message: '$message 다시 시도해 주세요.',
-        audioMode: audioMode,
       );
       return;
     }
@@ -248,7 +235,6 @@ class CallService extends StateNotifier<CallState> {
       sessionId: sessionId,
       retryAttempt: attempt,
       message: message,
-      audioMode: audioMode,
     );
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(reconnectDelay, () {
@@ -314,68 +300,14 @@ class CallService extends StateNotifier<CallState> {
     _signaling?.sink.add(jsonEncode(message));
   }
 
-  void startTransmitting() {
-    if (_disposed || state.status != CallStatus.active) return;
+  void _activateCall(String sessionId) {
     _setMicrophoneEnabled(true);
-    state = CallState(
-      state.status,
-      sessionId: state.sessionId,
-      retryAttempt: state.retryAttempt,
-      message: state.message,
-      audioMode: state.audioMode,
-      isTransmitting: true,
-      microphoneInputStatus: MicrophoneInputStatus.checking,
-    );
-    _startMicrophoneLevelMonitoring();
-  }
-
-  void stopTransmitting() {
-    if (_disposed || !state.isTransmitting) return;
-    _stopMicrophoneLevelMonitoring();
-    _setMicrophoneEnabled(false);
-    state = CallState(
-      state.status,
-      sessionId: state.sessionId,
-      retryAttempt: state.retryAttempt,
-      message: state.message,
-      audioMode: state.audioMode,
-    );
-  }
-
-  void setAudioMode(CallAudioMode mode) {
-    if (_disposed || state.audioMode == mode) return;
-    _stopMicrophoneLevelMonitoring();
-    final transmitting =
-        state.status == CallStatus.active && mode == CallAudioMode.call;
-    _setMicrophoneEnabled(transmitting);
-    state = CallState(
-      state.status,
-      sessionId: state.sessionId,
-      retryAttempt: state.retryAttempt,
-      message: state.message,
-      audioMode: mode,
-      isTransmitting: transmitting,
-      microphoneInputStatus: transmitting
-          ? MicrophoneInputStatus.checking
-          : MicrophoneInputStatus.idle,
-    );
-    if (transmitting) _startMicrophoneLevelMonitoring();
-  }
-
-  void _activateSelectedAudioMode(String sessionId) {
-    final mode = state.audioMode;
-    final transmitting = mode == CallAudioMode.call;
-    _setMicrophoneEnabled(transmitting);
     state = CallState(
       CallStatus.active,
       sessionId: sessionId,
-      audioMode: mode,
-      isTransmitting: transmitting,
-      microphoneInputStatus: transmitting
-          ? MicrophoneInputStatus.checking
-          : MicrophoneInputStatus.idle,
+      microphoneInputStatus: MicrophoneInputStatus.checking,
     );
-    if (transmitting) _startMicrophoneLevelMonitoring();
+    _startMicrophoneLevelMonitoring();
   }
 
   void _startMicrophoneLevelMonitoring() {
@@ -398,7 +330,7 @@ class CallService extends StateNotifier<CallState> {
   void _scheduleMicrophoneSilenceWarning() {
     _microphoneSilenceTimer?.cancel();
     _microphoneSilenceTimer = Timer(microphoneSilenceTimeout, () {
-      if (!_disposed && state.isTransmitting) {
+      if (!_disposed && state.status == CallStatus.active) {
         _updateMicrophoneInput(
           MicrophoneInputStatus.silent,
           level: state.microphoneLevel,
@@ -408,11 +340,15 @@ class CallService extends StateNotifier<CallState> {
   }
 
   Future<void> _sampleMicrophoneLevel() async {
-    if (_readingMicrophoneLevel || _disposed || !state.isTransmitting) return;
+    if (_readingMicrophoneLevel ||
+        _disposed ||
+        state.status != CallStatus.active) {
+      return;
+    }
     _readingMicrophoneLevel = true;
     try {
       final level = await _readMicrophoneLevel();
-      if (_disposed || !state.isTransmitting) return;
+      if (_disposed || state.status != CallStatus.active) return;
       if (level == null) {
         _microphoneSilenceTimer?.cancel();
         _updateMicrophoneInput(MicrophoneInputStatus.unavailable, level: 0);
@@ -440,7 +376,7 @@ class CallService extends StateNotifier<CallState> {
       );
     } catch (error) {
       debugPrint('마이크 입력 상태를 확인하지 못했습니다: $error');
-      if (!_disposed && state.isTransmitting) {
+      if (!_disposed && state.status == CallStatus.active) {
         _microphoneSilenceTimer?.cancel();
         _updateMicrophoneInput(MicrophoneInputStatus.unavailable, level: 0);
       }
@@ -477,8 +413,6 @@ class CallService extends StateNotifier<CallState> {
       sessionId: state.sessionId,
       retryAttempt: state.retryAttempt,
       message: state.message,
-      audioMode: state.audioMode,
-      isTransmitting: state.isTransmitting,
       microphoneInputStatus: inputStatus,
       microphoneLevel: level,
       recoveryAction: state.recoveryAction,
@@ -509,7 +443,6 @@ class CallService extends StateNotifier<CallState> {
       CallStatus.disconnected,
       sessionId: sessionId,
       message: '마이크 권한이 확인되었습니다. 음성 통화를 다시 연결합니다.',
-      audioMode: state.audioMode,
     );
     return true;
   }
