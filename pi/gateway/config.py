@@ -1,3 +1,4 @@
+import math
 import os
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
@@ -39,6 +40,8 @@ def _float(name: str, default: float, *, minimum: float = 0.0) -> float:
         value = float(raw)
     except ValueError as error:
         raise ConfigError(f"{name} must be a number, got {raw!r}") from error
+    if not math.isfinite(value):
+        raise ConfigError(f"{name} must be a finite number, got {raw!r}")
     if value < minimum:
         raise ConfigError(f"{name} must be at least {minimum}, got {value}")
     return value
@@ -47,9 +50,12 @@ def _float(name: str, default: float, *, minimum: float = 0.0) -> float:
 def _number(name: str, default: float) -> float:
     raw = os.getenv(name, str(default))
     try:
-        return float(raw)
+        value = float(raw)
     except ValueError as error:
         raise ConfigError(f"{name} must be a number, got {raw!r}") from error
+    if not math.isfinite(value):
+        raise ConfigError(f"{name} must be a finite number, got {raw!r}")
+    return value
 
 
 def get_bool_env(name: str, default: bool) -> bool:

@@ -30,6 +30,23 @@ class SettingsTests(unittest.TestCase):
             with self.assertRaisesRegex(ConfigError, "MAX_RETRIES"):
                 Settings()
 
+    def test_rejects_non_finite_timing_value(self) -> None:
+        with patch.dict(os.environ, {"SEND_INTERVAL": "nan"}, clear=True):
+            with self.assertRaisesRegex(ConfigError, "SEND_INTERVAL.*finite"):
+                Settings()
+
+    def test_rejects_non_finite_threshold(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"RSS_DETECTION_THRESHOLD": "-inf"},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(
+                ConfigError,
+                "RSS_DETECTION_THRESHOLD.*finite",
+            ):
+                Settings()
+
 
 if __name__ == "__main__":
     unittest.main()

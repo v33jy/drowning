@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-import asyncio
 
 from fastapi import WebSocket
 
@@ -51,6 +51,13 @@ class ConnectionManager:
                 return None
             except Exception as error:
                 logger.warning("WebSocket send failed; removing client: %s", error)
+                try:
+                    await asyncio.wait_for(
+                        ws.close(code=1011),
+                        timeout=config.WS_SEND_TIMEOUT_SECONDS,
+                    )
+                except Exception as close_error:
+                    logger.debug("WebSocket close failed: %s", close_error)
                 return ws
 
         dead = [

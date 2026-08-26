@@ -13,6 +13,7 @@ class FakeWebSocket:
     def __init__(self, behavior="ok"):
         self.behavior = behavior
         self.messages = []
+        self.closed = False
 
     async def send_text(self, payload):
         if self.behavior == "slow":
@@ -20,6 +21,9 @@ class FakeWebSocket:
         if self.behavior == "error":
             raise ConnectionError("disconnected")
         self.messages.append(payload)
+
+    async def close(self, code=1000):
+        self.closed = True
 
 
 class WebSocketManagerTests(unittest.IsolatedAsyncioTestCase):
@@ -35,6 +39,9 @@ class WebSocketManagerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(healthy.messages, ['{"type": "update"}'])
         self.assertEqual(manager._clients, [healthy])
+        self.assertTrue(slow.closed)
+        self.assertTrue(dead.closed)
+        self.assertFalse(healthy.closed)
 
     async def test_broadcast_sends_to_all_healthy_clients(self):
         manager = ConnectionManager()
