@@ -1,8 +1,12 @@
-import time
+import logging
+import random
+import threading
 import uuid
 from typing import Any, Optional
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 def extract_drone_id(raw_drone_id: str) -> int:
@@ -19,13 +23,15 @@ class GatewayClient:
         gateway_id: str,
         timeout: float = 5,
         max_retries: int = 3,
-        dry_run: bool = True
+        dry_run: bool = True,
+        stop_event: threading.Event | None = None,
     ) -> None:
         self.server_url = server_url.rstrip("/")
         self.gateway_id = gateway_id
         self.timeout = timeout
         self.max_retries = max_retries
         self.dry_run = dry_run
+        self.stop_event = stop_event or threading.Event()
 
         self.session = requests.Session()
 
@@ -58,8 +64,7 @@ class GatewayClient:
             }
 
         except (KeyError, TypeError, ValueError) as error:
-            print(f"[data error] invalid telemetry format: {error}")
-            print(f"[received] {telemetry}")
+            logger.warning("Invalid telemetry format: %s; received=%r", error, telemetry)
             return None
 
         return self._post_with_retry(f"/drones/{drone_id}/telemetry", payload)
@@ -110,33 +115,42 @@ class GatewayClient:
         url = f"{self.server_url}{path}"
 
         if self.dry_run:
-            print("[DRY RUN] skipping server send")
-            print(f"[GATEWAY] {self.gateway_id}")
-            print(f"[URL] {url}")
-            print(f"[PAYLOAD] {payload}")
+            logger.info("Dry run: gateway=%s url=%s payload=%r", self.gateway_id, url, payload)
             return {}
 
         for attempt in range(1, self.max_retries + 1):
+            if self.stop_event.is_set():
+                return None
             try:
                 response = self.session.post(url, json=payload, timeout=self.timeout)
-                response.raise_for_status()
+                if response.status_code >= 400:
+                    if not self._retryable_status(response.status_code):
+                        logger.error("Request rejected: url=%s status=%s response=%s", url, response.status_code, response.text)
+                        return None
+                    response.raise_for_status()
 
-                print(f"[sent] {url}  status: {response.status_code}")
+                logger.info("Sent request: url=%s status=%s", url, response.status_code)
                 try:
                     return response.json()
                 except ValueError:
                     return {}
 
             except requests.RequestException as error:
-                print(f"[send failed] {url}  {attempt}/{self.max_retries}: {error}")
-
-                if hasattr(error, "response") and error.response is not None:
-                    print(f"[server response] {error.response.text}")
+                response = getattr(error, "response", None)
+                if response is not None and not self._retryable_status(response.status_code):
+                    logger.error("Request rejected: url=%s status=%s response=%s", url, response.status_code, response.text)
+                    return None
+                logger.warning("Send failed: url=%s attempt=%s/%s error=%s", url, attempt, self.max_retries, error)
 
                 if attempt < self.max_retries:
-                    wait_seconds = 2 ** (attempt - 1)
-                    print(f"[retry wait] {wait_seconds}s")
-                    time.sleep(wait_seconds)
+                    wait_seconds = 2 ** (attempt - 1) + random.uniform(0, 0.25)
+                    logger.info("Retrying in %.2fs", wait_seconds)
+                    if self.stop_event.wait(wait_seconds):
+                        return None
 
-        print(f"[gave up] {url} exceeded max retries.")
+        logger.error("Giving up after %s attempts: url=%s", self.max_retries, url)
         return None
+
+    @staticmethod
+    def _retryable_status(status_code: int) -> bool:
+        return status_code in (408, 429) or status_code >= 500

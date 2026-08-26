@@ -29,6 +29,8 @@ class WsClient {
   Timer? _demoTimer;
   bool _disposed = false;
   String? _url;
+  int _connectionGeneration = 0;
+  int _reconnectAttempt = 0;
 
   // Broadcast streams don't replay past events to late subscribers — and
   // BootScreen fully awaits connect() (which emits connecting → connected)
@@ -58,6 +60,7 @@ class WsClient {
 
   Future<void> connect(String url) async {
     if (_disposed) return;
+    final generation = ++_connectionGeneration;
     // Offline showcase build — no socket, no server. Replay a canned
     // scenario into the same message stream every provider already listens
     // to, so the rest of the app can't tell the difference.
@@ -70,32 +73,40 @@ class WsClient {
 
     _url = url;
     _reconnectTimer?.cancel();
-    await _channel?.sink.close();
+    final previousChannel = _channel;
+    _channel = null;
+    await previousChannel?.sink.close();
+    if (!_isCurrent(generation)) return;
 
     _setStatus(ConnectionStatus.connecting);
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(url));
+      final channel = WebSocketChannel.connect(Uri.parse(url));
+      _channel = channel;
       // Await the handshake before declaring "connected" — otherwise a
       // dead server still briefly reports connected. Bounded by a timeout:
       // an unreachable host (e.g. a stale/wrong LAN IP on a real device)
       // can otherwise hang here indefinitely, leaving the badge stuck on
       // "재연결 중" forever instead of failing fast and retrying.
-      await _channel!.ready.timeout(const Duration(seconds: 5));
-      if (_disposed) {
-        await _channel!.sink.close();
+      await channel.ready.timeout(const Duration(seconds: 5));
+      if (!_isCurrent(generation)) {
+        await channel.sink.close();
         return;
       }
-      _channel!.stream.listen(
+      channel.stream.listen(
         _onRaw,
-        onError: (_) => _scheduleReconnect(),
-        onDone: _scheduleReconnect,
+        onError: (_) => _scheduleReconnect(generation),
+        onDone: () => _scheduleReconnect(generation),
       );
+      _reconnectAttempt = 0;
       _setStatus(ConnectionStatus.connected);
     } catch (e) {
       debugPrint('WsClient: connect to $url failed: $e');
-      _scheduleReconnect();
+      _scheduleReconnect(generation);
     }
   }
+
+  bool _isCurrent(int generation) =>
+      !_disposed && generation == _connectionGeneration;
 
   /// Injects a message as if it had arrived over the socket — [DemoFeed]'s
   /// only way to reach the providers, since [_messageController] is private.
@@ -108,8 +119,9 @@ class WsClient {
     try {
       final msg = jsonDecode(raw as String) as Map<String, dynamic>;
       _publish(WsMessage(msg['type'] as String, msg['data']));
-    } catch (_) {
+    } catch (error) {
       // Malformed message discarded — don't tear down the connection over it.
+      debugPrint('WsClient: malformed message ignored: $error');
     }
   }
 
@@ -118,15 +130,20 @@ class WsClient {
     _messageController.add(message);
   }
 
-  void _scheduleReconnect() {
-    if (_disposed || _url == null) return;
+  void _scheduleReconnect(int generation) {
+    if (!_isCurrent(generation) || _url == null) return;
     _setStatus(ConnectionStatus.disconnected);
-    _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 3), () => connect(_url!));
+    if (_reconnectTimer?.isActive ?? false) return;
+    final seconds = 1 << _reconnectAttempt.clamp(0, 4);
+    _reconnectAttempt++;
+    _reconnectTimer = Timer(Duration(seconds: seconds), () {
+      if (_isCurrent(generation)) connect(_url!);
+    });
   }
 
   void dispose() {
     _disposed = true;
+    _connectionGeneration++;
     _reconnectTimer?.cancel();
     _demoTimer?.cancel();
     _channel?.sink.close();

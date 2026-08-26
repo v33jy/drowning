@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import subprocess
 import time
+import logging
 from dataclasses import dataclass
 from typing import Protocol
+
+logger = logging.getLogger(__name__)
 
 
 class VideoPublisher(Protocol):
@@ -76,18 +79,23 @@ class H264RtspPublisher:
         if self.running:
             return
         self.stop()
-        self._camera = subprocess.Popen(
-            self._camera_command(),
-            stdout=subprocess.PIPE,
-        )
         try:
+            self._camera = subprocess.Popen(
+                self._camera_command(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
             self._relay = subprocess.Popen(
                 self._relay_command(),
                 stdin=self._camera.stdout,
+                stderr=subprocess.DEVNULL,
             )
             if self._camera.stdout is not None:
                 self._camera.stdout.close()
-        except Exception:
+            # Catch immediately-failing commands without adding startup latency.
+            if self._camera.poll() is not None or self._relay.poll() is not None:
+                raise RuntimeError("camera or RTSP relay exited during startup")
+        except (OSError, RuntimeError):
             self.stop()
             raise
 
@@ -120,11 +128,16 @@ class CameraController:
         publisher: VideoPublisher,
         enabled: bool,
         hold_seconds: float,
+        restart_limit: int = 3,
+        restart_window_seconds: float = 60.0,
     ) -> None:
         self.publisher = publisher
         self.enabled = enabled
         self.hold_seconds = max(0.0, hold_seconds)
         self._last_active_at: float | None = None
+        self.restart_limit = max(1, restart_limit)
+        self.restart_window_seconds = max(1.0, restart_window_seconds)
+        self._restart_attempts: list[float] = []
 
     def update(
         self,
@@ -139,7 +152,7 @@ class CameraController:
         if camera_arm or detected:
             self._last_active_at = timestamp
             if not self.publisher.running:
-                self.publisher.start()
+                self._start_publisher(timestamp)
             return
         if (
             self.publisher.running
@@ -151,3 +164,16 @@ class CameraController:
 
     def close(self) -> None:
         self.publisher.stop()
+
+    def _start_publisher(self, timestamp: float) -> None:
+        cutoff = timestamp - self.restart_window_seconds
+        self._restart_attempts = [attempt for attempt in self._restart_attempts if attempt >= cutoff]
+        if len(self._restart_attempts) >= self.restart_limit:
+            logger.error("Camera restart limit reached; waiting before another attempt")
+            return
+        self._restart_attempts.append(timestamp)
+        try:
+            self.publisher.start()
+            logger.info("Camera RTSP publisher started")
+        except (OSError, RuntimeError) as error:
+            logger.error("Camera RTSP publisher failed to start: %s", error)

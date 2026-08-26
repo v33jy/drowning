@@ -43,6 +43,30 @@ INPUT_MODE=lora_serial LORA_SERIAL_PORT=/dev/ttyUSB0 \
   python3 main.py
 ```
 
+환경변수 예시는 `.env.example`에 있습니다. Python 코드가 `.env` 파일을 직접 읽지는
+않으므로 로컬에서는 셸에서 변수를 내보내고, 운영 환경에서는 아래 systemd의
+`EnvironmentFile`을 사용합니다. 잘못된 숫자, URL, 실행 모드는 시작 즉시 변수 이름과
+함께 오류로 기록됩니다.
+
+## Raspberry Pi systemd 운영
+
+`drowning-gateway.service`의 설치 경로(`/opt/drowning`)가 실제 배포 경로와 다르면
+`WorkingDirectory`와 `ExecStart`를 먼저 수정합니다.
+
+```bash
+sudo install -d /etc/drowning
+sudo install -m 600 .env.example /etc/drowning/gateway.env
+sudo install -m 644 drowning-gateway.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now drowning-gateway
+sudo journalctl -u drowning-gateway -f
+```
+
+서비스는 치명적 오류에 non-zero로 종료되고 `Restart=on-failure`로 재시작됩니다.
+SIGTERM을 받으면 진행 중인 HTTP 재시도 대기를 중단하고 카메라, 측정 source,
+MAVLink 및 HTTP session을 닫습니다. HTTP는 연결 오류, timeout, 408, 429, 5xx만
+재시도하며 일반 4xx는 즉시 실패합니다.
+
 ## 환경변수
 
 | 변수 | 기본값 | 설명 |

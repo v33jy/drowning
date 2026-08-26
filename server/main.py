@@ -24,9 +24,13 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import config
 from routers import call, detection, drones, meta, search, signals, websocket
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 
 app = FastAPI(
     title="Disaster Drone Control Server",
@@ -36,7 +40,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=config.CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

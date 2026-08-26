@@ -52,6 +52,20 @@ class CameraControllerTests(unittest.TestCase):
 
         self.assertFalse(publisher.running)
 
+    def test_limits_restarts_for_repeated_process_death(self) -> None:
+        publisher = FakePublisher()
+        controller = CameraController(
+            publisher, enabled=True, hold_seconds=20,
+            restart_limit=2, restart_window_seconds=60,
+        )
+        controller.update(camera_arm=True, detected=False, now=10)
+        publisher.running = False
+        controller.update(camera_arm=True, detected=False, now=11)
+        publisher.running = False
+        controller.update(camera_arm=True, detected=False, now=12)
+
+        self.assertEqual(publisher.start_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

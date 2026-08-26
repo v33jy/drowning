@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:control_app/features/control/candidate_api.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -13,8 +15,38 @@ void main() {
         outcome: 'false_alarm',
         client: client,
       ),
-      throwsA(isA<CandidateApiException>()),
+      throwsA(
+        isA<CandidateApiException>().having(
+          (error) => error.statusCode,
+          'statusCode',
+          409,
+        ),
+      ),
     );
+  });
+
+  test('후보 처리 timeout을 네트워크 오류로 보고하고 재시도하지 않는다', () async {
+    var requestCount = 0;
+    final client = MockClient((_) async {
+      requestCount++;
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      return http.Response('{}', 200);
+    });
+
+    await expectLater(
+      reviewCandidateRequest(
+        cellId: 'A0',
+        outcome: 'false_alarm',
+        client: client,
+        timeout: const Duration(milliseconds: 1),
+      ),
+      throwsA(
+        isA<CandidateApiException>()
+            .having((error) => error.statusCode, 'statusCode', isNull)
+            .having((error) => error.cause, 'cause', isA<TimeoutException>()),
+      ),
+    );
+    expect(requestCount, 1);
   });
 
   test('후보 탐지가 2xx면 성공한다', () async {
