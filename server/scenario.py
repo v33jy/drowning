@@ -15,7 +15,7 @@ from typing import Any
 import httpx2 as httpx
 
 import config
-from route_planner import cell_center
+from route_planner import cell_center, distance_meters
 
 SERVER_URL = os.environ.get("DRONE_SERVER_URL", "http://localhost:8001")
 DRONE_ID = int(os.environ.get("DRONE_ID", "1"))
@@ -30,6 +30,22 @@ CANDIDATE_RSSI = {
     "H8": -56.0,
     "C9": -52.0,
 }
+
+# Ambient baseline sweep: signal radiates from the search area's centre and
+# weakens with distance, like a real RF source, instead of a flat/striped
+# value. Cells past UNSCANNED_RADIUS_RATIO of the max distance are left
+# unseeded so the outer ring shows up as genuinely unscanned.
+BASELINE_CENTER_RSS_DBM = -55.0
+BASELINE_EDGE_RSS_DBM = -95.0
+BASELINE_UNSCANNED_RADIUS_RATIO = 0.85
+
+
+def _all_cell_ids() -> list[str]:
+    return [
+        f"{chr(65 + row)}{col}"
+        for row in range(config.GRID_ROWS)
+        for col in range(config.GRID_COLS)
+    ]
 
 
 async def run() -> None:
@@ -74,12 +90,20 @@ async def run() -> None:
 
 async def _seed_existing_search(client: httpx.AsyncClient) -> None:
     print("[초기화] 지도 중요도와 기존 RSSI 측정 결과를 결합합니다.")
-    # 1차 수색이 끝난 시점이므로 전체 셀에 최소 한 개의 RSSI 표본이 있다.
-    # 후보가 아닌 셀도 주변 통과 측정값으로 채워 미확인 공백을 남기지 않는다.
+    center = (
+        (config.LAT_MIN + config.LAT_MAX) / 2,
+        (config.LNG_MIN + config.LNG_MAX) / 2,
+    )
+    distances = {
+        cell_id: distance_meters(center, cell_center(cell_id))
+        for cell_id in _all_cell_ids()
+    }
+    unscanned_radius = max(distances.values()) * BASELINE_UNSCANNED_RADIUS_RATIO
+    rss_falloff = BASELINE_CENTER_RSS_DBM - BASELINE_EDGE_RSS_DBM
     baseline = {
-        f"{chr(65 + row)}{col}": -96.0 + ((row * 7 + col * 3) % 18)
-        for row in range(config.GRID_ROWS)
-        for col in range(config.GRID_COLS)
+        cell_id: BASELINE_CENTER_RSS_DBM - (distance / unscanned_radius) * rss_falloff
+        for cell_id, distance in distances.items()
+        if distance <= unscanned_radius
     }
     for cell_id, rss in baseline.items():
         lat, lng = cell_center(cell_id)
