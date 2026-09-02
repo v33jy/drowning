@@ -15,6 +15,14 @@ import '../providers/heatmap_provider.dart';
 class HeatmapLayer extends ConsumerWidget {
   const HeatmapLayer({super.key});
 
+  // Satellite photo tiles carry far more visual noise than the old flat
+  // basemap, so every overlay below needs a deliberate contrast boost:
+  // a black-then-white halo stroke that reads over any terrain color, and
+  // heavier fill opacity than a flat basemap would need.
+  static const _haloOuterWidth = 5.0;
+  static const _haloInnerWidth = 2.5;
+  static const _cellBorderWidth = 1.5;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final gridDef = ref.watch(gridDefProvider);
@@ -23,7 +31,7 @@ class HeatmapLayer extends ConsumerWidget {
 
     return PolygonLayer(
       polygons: [
-        _buildSearchBoundary(gridDef.values),
+        ..._buildSearchBoundary(gridDef.values),
         for (final entry in cells.entries)
           if (!entry.value.isUnscanned)
             if (gridDef[entry.key] case final bounds?)
@@ -32,49 +40,65 @@ class HeatmapLayer extends ConsumerWidget {
     );
   }
 
-  Polygon _buildSearchBoundary(Iterable<CellBounds> cells) {
+  /// White line over a wider black halo so the boundary stays visible
+  /// regardless of the satellite tile's underlying color at that spot.
+  List<Polygon> _buildSearchBoundary(Iterable<CellBounds> cells) {
     final latMin = cells.map((cell) => cell.latMin).reduce(mathMin);
     final latMax = cells.map((cell) => cell.latMax).reduce(mathMax);
     final lngMin = cells.map((cell) => cell.lngMin).reduce(mathMin);
     final lngMax = cells.map((cell) => cell.lngMax).reduce(mathMax);
+    final points = [
+      LatLng(latMax, lngMin),
+      LatLng(latMax, lngMax),
+      LatLng(latMin, lngMax),
+      LatLng(latMin, lngMin),
+    ];
+    return [
+      Polygon(
+        points: points,
+        color: Colors.transparent,
+        borderColor: Colors.black,
+        borderStrokeWidth: _haloOuterWidth,
+      ),
+      Polygon(
+        points: points,
+        color: Colors.transparent,
+        borderColor: Colors.white,
+        borderStrokeWidth: _haloInnerWidth,
+      ),
+    ];
+  }
+
+  Polygon _buildPolygon(HeatmapCell cell, CellBounds bounds) {
+    final isHighlighted =
+        cell.needsRecheck || cell.status == SearchAreaStatus.confirmed;
     return Polygon(
       points: [
-        LatLng(latMax, lngMin),
-        LatLng(latMax, lngMax),
-        LatLng(latMin, lngMax),
-        LatLng(latMin, lngMin),
+        LatLng(bounds.latMax, bounds.lngMin),
+        LatLng(bounds.latMax, bounds.lngMax),
+        LatLng(bounds.latMin, bounds.lngMax),
+        LatLng(bounds.latMin, bounds.lngMin),
       ],
-      color: Colors.transparent,
-      borderColor: const Color(0xFF173B67),
-      borderStrokeWidth: 2,
+      color: heatmapDisplayColor(
+        cell,
+      ).withValues(alpha: _fillOpacity(cell.status)),
+      // White rather than the cell's own color — a same-hue border on a
+      // same-hue fill disappears, same reasoning as the boundary halo above.
+      borderColor: isHighlighted ? Colors.white : Colors.transparent,
+      borderStrokeWidth: isHighlighted ? _cellBorderWidth : 0,
     );
   }
 
-  Polygon _buildPolygon(HeatmapCell cell, CellBounds bounds) => Polygon(
-    points: [
-      LatLng(bounds.latMax, bounds.lngMin),
-      LatLng(bounds.latMax, bounds.lngMax),
-      LatLng(bounds.latMin, bounds.lngMax),
-      LatLng(bounds.latMin, bounds.lngMin),
-    ],
-    color: heatmapDisplayColor(
-      cell,
-    ).withValues(alpha: _fillOpacity(cell.status)),
-    borderColor: cell.needsRecheck || cell.status == SearchAreaStatus.confirmed
-        ? heatmapDisplayColor(cell)
-        : Colors.transparent,
-    borderStrokeWidth:
-        cell.needsRecheck || cell.status == SearchAreaStatus.confirmed
-        ? 1.2
-        : 0,
-  );
-
+  // Pulled back down from the initial satellite-contrast pass — full
+  // strength across every status buried the imagery under color. Trimmed
+  // roughly evenly so the basemap reads through while needsRecheck/confirmed
+  // still stand out as the cells that actually need attention.
   double _fillOpacity(SearchAreaStatus status) => switch (status) {
     SearchAreaStatus.unscanned => 0,
-    SearchAreaStatus.scanning => 0.35,
-    SearchAreaStatus.needsRecheck => 0.62,
-    SearchAreaStatus.cleared => 0.18,
-    SearchAreaStatus.confirmed => 0.72,
+    SearchAreaStatus.scanning => 0.38,
+    SearchAreaStatus.needsRecheck => 0.60,
+    SearchAreaStatus.cleared => 0.16,
+    SearchAreaStatus.confirmed => 0.68,
   };
 }
 

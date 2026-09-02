@@ -362,7 +362,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                       children: [
                         TileLayer(
                           urlTemplate:
-                              'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+                              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
                           userAgentPackageName: 'com.drone.control_app',
                         ),
                         const HeatmapLayer(),
@@ -373,7 +373,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                         RichAttributionWidget(
                           attributions: [
                             TextSourceAttribution(
-                              '© OpenStreetMap contributors · © CARTO',
+                              '© Esri, Maxar, Earthstar Geographics',
                             ),
                           ],
                         ),

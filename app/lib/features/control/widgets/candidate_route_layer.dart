@@ -117,37 +117,55 @@ class _CandidateRouteLayerState extends ConsumerState<CandidateRouteLayer>
         MarkerLayer(
           markers: [
             for (var index = 0; index < route.length; index++)
-              Marker(
-                point: candidateCellCenter(grid[route[index]]!),
-                width: candidateMarkerSize(camera, grid[route[index]]!),
-                height: candidateMarkerSize(camera, grid[route[index]]!),
-                child: FadeTransition(
-                  opacity: route[index] == pulseCellId
-                      ? _pulseOpacity
-                      : const AlwaysStoppedAnimation(1),
-                  child: Container(
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: _routeColor(cells[route[index]]!.status),
-                      shape: BoxShape.circle,
-                    ),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        '${index + 1}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+              _buildCandidateMarker(
+                camera: camera,
+                bounds: grid[route[index]]!,
+                number: index + 1,
+                status: cells[route[index]]!.status,
+                pulsing: route[index] == pulseCellId,
               ),
           ],
         ),
       ],
+    );
+  }
+
+  Marker _buildCandidateMarker({
+    required MapCamera camera,
+    required CellBounds bounds,
+    required int number,
+    required SearchAreaStatus status,
+    required bool pulsing,
+  }) {
+    final size = candidateMarkerSize(camera, bounds);
+    return Marker(
+      point: candidateCellCenter(bounds),
+      width: size,
+      height: size,
+      child: FadeTransition(
+        opacity: pulsing ? _pulseOpacity : const AlwaysStoppedAnimation(1),
+        child: Container(
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _routeColor(status),
+            shape: BoxShape.circle,
+          ),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              '$number',
+              style: TextStyle(
+                color: Colors.white,
+                // Scale with the marker so the number stays readable at the
+                // clamped max size instead of looking tiny inside a big
+                // circle — FittedBox alone only ever shrinks, never grows.
+                fontSize: candidateMarkerFontSize(size),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -167,6 +185,14 @@ double candidateMarkerSize(MapCamera camera, CellBounds bounds) {
   );
   return candidateMarkerDiameterForCellSide(cellSide);
 }
+
+const _candidateFontRatio = 0.45;
+const _candidateFontMin = 10.0;
+const _candidateFontMax = 44.0;
+
+double candidateMarkerFontSize(double markerSize) => (markerSize * _candidateFontRatio)
+    .clamp(_candidateFontMin, _candidateFontMax)
+    .toDouble();
 
 double candidateMarkerDiameterForCellSide(double cellSide) =>
     (cellSide * 0.72).clamp(18.0, 96.0).toDouble();
